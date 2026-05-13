@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --text: #202124;
+      --muted: #5f6368;
+      --line: #dadce0;
+      --blue: #1a73e8;
+      --red: #d93025;
+      --card: #ffffff;
+      --head: #eef3fb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 13px;
+    }
+
+    .wrap {
+      padding: 12px;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #188038;
+      flex: 0 0 auto;
+    }
+
+    .action-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .lookup-btn {
+      width: 100%;
+      border: 1px solid #185abc;
+      background: var(--blue);
+      color: #fff;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .lookup-btn:disabled {
+      cursor: progress;
+      opacity: .65;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .name {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+      margin-bottom: 4px;
+    }
+
+    .muted {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .loading-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d2e3fc;
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error {
+      color: var(--red);
+      line-height: 1.45;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      max-height: calc(100vh - 160px);
+    }
+
+    table {
+      width: 100%;
+      min-width: 520px;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      min-width: 82px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--head);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right: 0;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">Tra cứu khách hàng</div>
+      <div class="dot" title="Đang chạy"></div>
+    </div>
+    <div class="action-bar">
+      <button id="lookupActiveBtn" class="lookup-btn" type="button">Tra cứu ô đang chọn</button>
+    </div>
+    <div id="app" class="panel">
+      <div class="loading-row">
+        <div class="spinner"></div>
+        <div>
+          <div class="name">Đang tải...</div>
+          <div class="muted">Chọn một ô Tên khách hàng để tra cứu.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const POLL_MS = 300;
+    const CLIENT_PERF_FLUSH_MS = 2000;
+    const CLIENT_PERF_MAX_QUEUE = 20;
+    const TECH_HIDDEN = new Set(["Tên tra cứu"]);
+    const TECH_ALWAYS = new Set(["Tên gốc", "File nguồn", "Sheet nguồn", "Dòng nguồn"]);
+    let lastKey = "";
+    let polling = false;
+    let currentSelectionKey = "";
+    let latestState = {};
+    let pendingLookupState = null;
+    let manualLookupTimestamp = 0;
+    let statePollCount = 0;
+    let clientPerfQueue = [];
+    let clientPerfTimer = null;
+    let clientPerfFlushing = false;
+    const clientPerfSession = "sidebar-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
+    let lookupIndex = {
+      loaded: false,
+      loading: true,
+      headers: [],
+      rows: [],
+      rowCount: 0,
+      loadedAt: 0,
+      keyCol: -1,
+      map: Object.create(null),
+      message: ""
+    };
+
+    function perfNow() {
+      return window.performance && window.performance.now ? window.performance.now() : Date.now();
+    }
+
+    function recordClientPerf(stage, startedAt, data) {
+      data = data || {};
+      clientPerfQueue.push({
+        session: clientPerfSession,
+        stage: stage,
+        durationMs: Math.max(0, perfNow() - startedAt),
+        rows: data.rows || 0,
+        cols: data.cols || 0,
+        cells: data.cells || 0,
+        message: data.message || "",
+        meta: data.meta || {},
+        timestamp: new Date().toISOString()
+      });
+      scheduleClientPerfFlush(clientPerfQueue.length >= CLIENT_PERF_MAX_QUEUE);
+    }
+
+    function scheduleClientPerfFlush(force) {
+      if (force) {
+        flushClientPerf();
+        return;
+      }
+      if (clientPerfTimer) return;
+      clientPerfTimer = setTimeout(function () {
+        clientPerfTimer = null;
+        flushClientPerf();
+      }, CLIENT_PERF_FLUSH_MS);
+    }
+
+    function flushClientPerf() {
+      if (clientPerfFlushing || !clientPerfQueue.length) return;
+      const batch = clientPerfQueue.splice(0, clientPerfQueue.length);
+      clientPerfFlushing = true;
+      google.script.run
+        .withSuccessHandler(function () {
+          clientPerfFlushing = false;
+          if (clientPerfQueue.length) scheduleClientPerfFlush(true);
+        })
+        .withFailureHandler(function () {
+          clientPerfFlushing = false;
+          clientPerfQueue = batch.concat(clientPerfQueue).slice(-CLIENT_PERF_MAX_QUEUE);
+        })
+        .recordClientPerfEvents(batch);
+    }
+
+    function shouldRecordStateRoundTrip(durationMs) {
+      statePollCount++;
+      return statePollCount <= 5 || statePollCount % 10 === 0 || durationMs >= 500;
+    }
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function stateKey(state) {
+      return [
+        state.status || "",
+        state.selectionKey || "",
+        state.timestamp || "",
+        state.message || "",
+        lookupIndex.loaded ? "index-loaded" : "index-loading"
+      ].join("|");
+    }
+
+    function setHtml(html) {
+      document.getElementById("app").innerHTML = html;
+    }
+
+    function render(state) {
+      state = state || {};
+      latestState = state;
+      const key = stateKey(state);
+      if (key === lastKey) return;
+      lastKey = key;
+
+      if (state.status === "error") {
+        setHtml(`<div class="error"><strong>Lỗi tra cứu</strong><br>${esc(state.message || "")}</div>`);
+        return;
+      }
+
+      if (state.status === "loading") {
+        currentSelectionKey = state.selectionKey || "";
+        pendingLookupState = state;
+        if (!lookupIndex.loaded) {
+          renderLoading(state, true);
+          return;
+        }
+        renderAfterLoading(state);
+        return;
+      }
+
+      if (state.status === "ready_meta") {
+        currentSelectionKey = state.selectionKey || "";
+        pendingLookupState = state;
+        if (!lookupIndex.loaded) {
+          renderLoading(state, true);
+          return;
+        }
+        renderAfterLoading(state);
+        return;
+      }
+
+      if (state.status === "ready") {
+        currentSelectionKey = state.selectionKey || "";
+        pendingLookupState = state;
+        if (!lookupIndex.loaded) {
+          renderLoading(state, true);
+          return;
+        }
+        renderAfterLoading(state);
+        return;
+      }
+
+      if (lookupIndex.loading) {
+        renderIndexLoading();
+        return;
+      }
+
+      setHtml(`
+        <div class="name">Chưa có tra cứu</div>
+        <div class="muted">${esc(state.message || lookupIndex.message || "Đã nạp " + lookupIndex.rowCount + " dòng. Chọn một ô Tên khách hàng.")}</div>
+      `);
+    }
+
+    function renderIndexLoading() {
+      setHtml(`
+        <div class="loading-row">
+          <div class="spinner"></div>
+          <div>
+            <div class="name">Đang nạp dữ liệu</div>
+            <div class="muted">Đọc DANH_SACH_KHACH một lần để tra cứu nhanh trong sidebar.</div>
+          </div>
+        </div>
+      `);
+    }
+
+    function renderLoading(state, waitingForIndex) {
+      setHtml(`
+        <div class="loading-row">
+          <div class="spinner"></div>
+          <div>
+            <div class="name">${esc(state.ten || "Đang tra cứu")}</div>
+            <div class="meta">${esc(state.sheetName || "")} · dòng ${esc(state.rowNum || "")}</div>
+            <div class="muted">${waitingForIndex ? "Đang chờ nạp dữ liệu..." : "Đang xử lý..."}</div>
+          </div>
+        </div>
+      `);
+    }
+
+    function renderAfterLoading(state) {
+      const key = state.selectionKey || "";
+      renderLoading(state, false);
+      setTimeout(function () {
+        if (key && key !== currentSelectionKey) return;
+        renderClientLookup(state);
+      }, 0);
+    }
+
+    function lookupActiveCell() {
+      const button = document.getElementById("lookupActiveBtn");
+      const roundTripStart = perfNow();
+      if (button) button.disabled = true;
+      setHtml(`
+        <div class="loading-row">
+          <div class="spinner"></div>
+          <div>
+            <div class="name">Đang đọc ô đang chọn</div>
+            <div class="muted">Lấy tên trực tiếp từ ô hiện tại trong Google Sheet.</div>
+          </div>
+        </div>
+      `);
+
+      google.script.run
+        .withSuccessHandler(function (state) {
+          if (button) button.disabled = false;
+          state = state || {};
+          recordClientPerf("button.roundTrip", roundTripStart, {
+            message: state.status || "",
+            meta: {
+              selectionKey: state.selectionKey || "",
+              tenKey: state.tenKey || ""
+            }
+          });
+
+          if (state.status === "error") {
+            latestState = state;
+            setHtml(`<div class="error"><strong>Lỗi tra cứu</strong><br>${esc(state.message || "")}</div>`);
+            flushClientPerf();
+            return;
+          }
+
+          manualLookupTimestamp = Number(state.timestamp || Date.now());
+          currentSelectionKey = state.selectionKey || "";
+          pendingLookupState = state;
+          latestState = state;
+
+          if (!lookupIndex.loaded) {
+            renderLoading(state, true);
+            flushClientPerf();
+            return;
+          }
+
+          renderClientLookup(state);
+        })
+        .withFailureHandler(function (err) {
+          if (button) button.disabled = false;
+          recordClientPerf("button.roundTrip", roundTripStart, {
+            message: err && err.message ? err.message : String(err),
+            meta: { error: true }
+          });
+          setHtml(`<div class="error"><strong>Lỗi tra cứu</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+          flushClientPerf();
+        })
+        .getActiveCellLookupState();
+    }
+
+    function loadIndex() {
+      const roundTripStart = perfNow();
+      renderIndexLoading();
+      google.script.run
+        .withSuccessHandler(function (index) {
+          index = index || {};
+          const rows = index.rows || [];
+          const headers = index.headers || [];
+          recordClientPerf("loadIndex.roundTrip", roundTripStart, {
+            rows: rows.length,
+            cols: headers.length,
+            cells: rows.length * headers.length,
+            message: "loadLookupIndex"
+          });
+          const buildStart = perfNow();
+          buildLookupIndex(index || {});
+          recordClientPerf("loadIndex.buildMap", buildStart, {
+            rows: lookupIndex.rowCount,
+            cols: lookupIndex.headers.length,
+            cells: lookupIndex.rowCount * lookupIndex.headers.length,
+            message: "keyCol " + lookupIndex.keyCol
+          });
+          lastKey = "";
+          if (pendingLookupState) {
+            render(pendingLookupState);
+            return;
+          }
+          render(latestState || {});
+        })
+        .withFailureHandler(function (err) {
+          recordClientPerf("loadIndex.roundTrip", roundTripStart, {
+            message: err && err.message ? err.message : String(err),
+            meta: { error: true }
+          });
+          lookupIndex.loading = false;
+          lookupIndex.loaded = false;
+          setHtml(`<div class="error"><strong>Lỗi nạp dữ liệu</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+          flushClientPerf();
+        })
+        .loadLookupIndex();
+    }
+
+    function buildLookupIndex(index) {
+      const headers = index.headers || [];
+      const rows = index.rows || [];
+      const keyCol = headers.indexOf("Tên tra cứu");
+      const map = Object.create(null);
+
+      if (keyCol !== -1) {
+        rows.forEach(function (row) {
+          const key = String(row[keyCol] || "").trim();
+          if (!key) return;
+          if (!map[key]) map[key] = [];
+          map[key].push(row);
+        });
+      }
+
+      lookupIndex = {
+        loaded: true,
+        loading: false,
+        headers: headers,
+        rows: rows,
+        rowCount: Number(index.rowCount || rows.length || 0),
+        loadedAt: index.loadedAt || Date.now(),
+        keyCol: keyCol,
+        map: map,
+        message: index.message || ""
+      };
+    }
+
+    function renderClientLookup(state) {
+      if (!lookupIndex.loaded) {
+        renderLoading(state, true);
+        return;
+      }
+
+      if (lookupIndex.keyCol === -1) {
+        setHtml(`<div class="error"><strong>Thiếu cột Tên tra cứu</strong><br>Hãy chạy lại Đồng bộ DANH_SACH_KHACH.</div>`);
+        return;
+      }
+
+      const filterStart = perfNow();
+      const key = String(state.tenKey || "").trim();
+      const rows = key ? (lookupIndex.map[key] || []) : [];
+      recordClientPerf("lookup.filter", filterStart, {
+        rows: rows.length,
+        cols: lookupIndex.headers.length,
+        cells: rows.length * lookupIndex.headers.length,
+        message: key
+      });
+      const renderStart = perfNow();
+      renderResults({
+        status: "ready",
+        ten: state.ten,
+        tenKey: key,
+        sheetName: state.sheetName,
+        rowNum: state.rowNum,
+        editedA1: state.editedA1,
+        selectionKey: state.selectionKey,
+        headers: lookupIndex.headers,
+        rows: rows,
+        total: rows.length,
+        truncated: false,
+        timestamp: Date.now()
+      });
+      recordClientPerf("lookup.render", renderStart, {
+        rows: rows.length,
+        cols: lookupIndex.headers.length,
+        cells: rows.length * lookupIndex.headers.length,
+        message: key
+      });
+      flushClientPerf();
+    }
+
+    function renderResults(state) {
+      currentSelectionKey = state.selectionKey || "";
+      const rows = state.rows || [];
+      const headers = state.headers || [];
+      const headerHtml = `
+        <div class="name">${esc(state.ten || "")}</div>
+        <div class="meta">${esc(state.sheetName || "")} · dòng ${esc(state.rowNum || "")}</div>
+        <div class="muted">Tìm thấy ${esc(state.total || 0)} dòng${state.truncated ? " · đang hiển thị giới hạn" : ""}</div>
+      `;
+
+      if (!rows.length) {
+        setHtml(`
+          ${headerHtml}
+          <div class="panel empty">Không có lịch sử trong DANH_SACH_KHACH.</div>
+        `);
+        return;
+      }
+
+      const columns = visibleColumns(headers, rows);
+      const thead = columns.map(function (idx) {
+        return `<th>${esc(headers[idx] || "")}</th>`;
+      }).join("");
+      const tbody = rows.map(function (row) {
+        return `<tr>${columns.map(function (idx) {
+          return `<td>${esc(row[idx] || "")}</td>`;
+        }).join("")}</tr>`;
+      }).join("");
+
+      setHtml(`
+        ${headerHtml}
+        <div class="table-wrap">
+          <table>
+            <thead><tr>${thead}</tr></thead>
+            <tbody>${tbody}</tbody>
+          </table>
+        </div>
+      `);
+    }
+
+    function visibleColumns(headers, rows) {
+      const result = [];
+      headers.forEach(function (header, idx) {
+        if (TECH_HIDDEN.has(header)) return;
+        if (TECH_ALWAYS.has(header)) {
+          result.push(idx);
+          return;
+        }
+
+        const hasValue = rows.some(function (row) {
+          return String(row[idx] || "").trim() !== "";
+        });
+        if (hasValue) result.push(idx);
+      });
+      return result;
+    }
+
+    function refresh() {
+      if (polling) return;
+      polling = true;
+      const roundTripStart = perfNow();
+      google.script.run
+        .withSuccessHandler(function (state) {
+          polling = false;
+          const durationMs = Math.max(0, perfNow() - roundTripStart);
+          if (shouldRecordStateRoundTrip(durationMs)) {
+            recordClientPerf("state.roundTrip", roundTripStart, {
+              message: state && state.status ? state.status : "",
+              meta: {
+                selectionKey: state && state.selectionKey ? state.selectionKey : "",
+                sampledPoll: statePollCount
+              }
+            });
+          }
+          if (manualLookupTimestamp && (!state || Number(state.timestamp || 0) < manualLookupTimestamp)) {
+            return;
+          }
+          render(state);
+        })
+        .withFailureHandler(function (err) {
+          polling = false;
+          recordClientPerf("state.roundTrip", roundTripStart, {
+            message: err && err.message ? err.message : String(err),
+            meta: { error: true, sampledPoll: statePollCount }
+          });
+          setHtml(`<div class="error"><strong>Lỗi tải trạng thái</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+          flushClientPerf();
+        })
+        .getRealtimeSidebarState();
+    }
+
+    loadIndex();
+    refresh();
+    setInterval(refresh, POLL_MS);
+    document.getElementById("lookupActiveBtn").addEventListener("click", lookupActiveCell);
+    window.addEventListener("beforeunload", function () {
+      flushClientPerf();
+    });
+  </script>
+</body>
+</html>

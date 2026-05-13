@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --text: #202124;
+      --muted: #5f6368;
+      --line: #dadce0;
+      --blue: #1a73e8;
+      --red: #d93025;
+      --card: #ffffff;
+      --head: #eef3fb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 13px;
+    }
+
+    .wrap {
+      padding: 12px;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #188038;
+      flex: 0 0 auto;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .name {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+      margin-bottom: 4px;
+    }
+
+    .muted {
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .loading-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #d2e3fc;
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .75s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error {
+      color: var(--red);
+      line-height: 1.45;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      max-height: calc(100vh - 160px);
+    }
+
+    table {
+      width: 100%;
+      min-width: 520px;
+      border-collapse: collapse;
+      table-layout: auto;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      min-width: 82px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: var(--head);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right: 0;
+    }
+
+    .empty {
+      color: var(--muted);
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">Tra cứu khách hàng</div>
+      <div class="dot" title="Đang chạy"></div>
+    </div>
+    <div id="app" class="panel">
+      <div class="loading-row">
+        <div class="spinner"></div>
+        <div>
+          <div class="name">Đang tải...</div>
+          <div class="muted">Chọn một ô Tên khách hàng để tra cứu.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const POLL_MS = 300;
+    const TECH_HIDDEN = new Set(["Tên tra cứu"]);
+    const TECH_ALWAYS = new Set(["Tên gốc", "File nguồn", "Sheet nguồn", "Dòng nguồn"]);
+    let lastKey = "";
+    let polling = false;
+    let currentSelectionKey = "";
+    const inFlight = {};
+    let renderedResultKey = "";
+
+    function esc(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function stateKey(state) {
+      return [
+        state.status || "",
+        state.selectionKey || "",
+        state.timestamp || "",
+        state.total || "",
+        state.message || ""
+      ].join("|");
+    }
+
+    function setHtml(html) {
+      document.getElementById("app").innerHTML = html;
+    }
+
+    function render(state) {
+      state = state || {};
+      const key = stateKey(state);
+      if (key === lastKey) return;
+      lastKey = key;
+
+      if (state.status === "error") {
+        setHtml(`<div class="error"><strong>Lỗi tra cứu</strong><br>${esc(state.message || "")}</div>`);
+        return;
+      }
+
+      if (state.status === "loading") {
+        currentSelectionKey = state.selectionKey || "";
+        renderLoading(state);
+        requestResults(state);
+        return;
+      }
+
+      if (state.status === "ready_meta") {
+        if (state.selectionKey === renderedResultKey) return;
+        currentSelectionKey = state.selectionKey || "";
+        renderLoading(state);
+        requestResults(state);
+        return;
+      }
+
+      if (state.status === "ready") {
+        renderResults(state);
+        return;
+      }
+
+      setHtml(`
+        <div class="name">Chưa có tra cứu</div>
+        <div class="muted">${esc(state.message || "Chạy đồng bộ, sau đó chọn một ô Tên khách hàng.")}</div>
+      `);
+    }
+
+    function renderLoading(state) {
+      setHtml(`
+        <div class="loading-row">
+          <div class="spinner"></div>
+          <div>
+            <div class="name">${esc(state.ten || "Đang tra cứu")}</div>
+            <div class="meta">${esc(state.sheetName || "")} · dòng ${esc(state.rowNum || "")}</div>
+          </div>
+        </div>
+      `);
+    }
+
+    function requestResults(state) {
+      const requestKey = state.selectionKey || "";
+      if (!requestKey || inFlight[requestKey]) return;
+      inFlight[requestKey] = true;
+      google.script.run
+        .withSuccessHandler(function (readyState) {
+          delete inFlight[requestKey];
+          if (!readyState || readyState.selectionKey !== currentSelectionKey) return;
+          render(readyState);
+        })
+        .withFailureHandler(function (err) {
+          delete inFlight[requestKey];
+          setHtml(`<div class="error"><strong>Lỗi lấy kết quả</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .getLookupResults(requestKey);
+    }
+
+    function renderResults(state) {
+      currentSelectionKey = state.selectionKey || "";
+      renderedResultKey = state.selectionKey || "";
+      const rows = state.rows || [];
+      const headers = state.headers || [];
+      const headerHtml = `
+        <div class="name">${esc(state.ten || "")}</div>
+        <div class="meta">${esc(state.sheetName || "")} · dòng ${esc(state.rowNum || "")}</div>
+        <div class="muted">Tìm thấy ${esc(state.total || 0)} dòng${state.truncated ? " · đang hiển thị giới hạn" : ""}</div>
+      `;
+
+      if (!rows.length) {
+        setHtml(`
+          ${headerHtml}
+          <div class="panel empty">Không có lịch sử trong DANH_SACH_KHACH.</div>
+        `);
+        return;
+      }
+
+      const columns = visibleColumns(headers, rows);
+      const thead = columns.map(function (idx) {
+        return `<th>${esc(headers[idx] || "")}</th>`;
+      }).join("");
+      const tbody = rows.map(function (row) {
+        return `<tr>${columns.map(function (idx) {
+          return `<td>${esc(row[idx] || "")}</td>`;
+        }).join("")}</tr>`;
+      }).join("");
+
+      setHtml(`
+        ${headerHtml}
+        <div class="table-wrap">
+          <table>
+            <thead><tr>${thead}</tr></thead>
+            <tbody>${tbody}</tbody>
+          </table>
+        </div>
+      `);
+    }
+
+    function visibleColumns(headers, rows) {
+      const result = [];
+      headers.forEach(function (header, idx) {
+        if (TECH_HIDDEN.has(header)) return;
+        if (TECH_ALWAYS.has(header)) {
+          result.push(idx);
+          return;
+        }
+
+        const hasValue = rows.some(function (row) {
+          return String(row[idx] || "").trim() !== "";
+        });
+        if (hasValue) result.push(idx);
+      });
+      return result;
+    }
+
+    function refresh() {
+      if (polling) return;
+      polling = true;
+      google.script.run
+        .withSuccessHandler(function (state) {
+          polling = false;
+          render(state);
+        })
+        .withFailureHandler(function (err) {
+          polling = false;
+          setHtml(`<div class="error"><strong>Lỗi tải trạng thái</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .getRealtimeSidebarState();
+    }
+
+    refresh();
+    setInterval(refresh, POLL_MS);
+  </script>
+</body>
+</html>
