@@ -2,6 +2,13 @@
 
 Du an la Google Apps Script cho Google Sheet quan ly khach hang va tra cuu lich su khach hang qua sidebar.
 
+## Lien ket lam viec
+
+- Repo GitHub: https://github.com/minhnhatnguyen6297-a11y/script_sheet.git
+- Google Sheet hien tai: https://docs.google.com/spreadsheets/d/10njV-woq_3pVHDpWiStFyhDVIUv4BWDV7KrWf3OzL4I/edit?gid=1003165902#gid=1003165902
+- Chrome debug endpoint: http://127.0.0.1:9223
+  - Chi dung duoc sau khi mo Chrome voi `--remote-debugging-port=9223`.
+
 ## Nguyen tac du lieu
 
 - Không tóm tắt/gộp mất dữ liệu.
