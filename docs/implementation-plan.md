@@ -1,169 +1,145 @@
-# Ke hoach tiep tuc: hen gio, nhac viec va lich su trang thai
+# Ke hoach trien khai: hen viec, tien do va canh bao ho so
 
-## Hien trang project
+## Muc tieu
 
-- Project la Google Apps Script cho Google Sheet quan ly khach hang va sidebar tra cuu lich su khach hang.
-- File chinh:
-  - `danh_sach_kh_v4.gs`: logic dong bo, tao `DANH_SACH_KHACH`, sidebar state, profiler.
-  - `SidebarTraCuu.html`: giao dien sidebar tra cuu lich su theo ten khach hang.
-  - `Bieu do flow cong viec.html`: flow nghiep vu ve nop ho so, thue, tra ho so, dinh chinh, cap so.
-  - `tests/perf-profiler.test.js`: static tests de dam bao Apps Script va sidebar JavaScript van parse duoc, dong thoi khoa mot so rang buoc hieu nang.
-- `DANH_SACH_KHACH` la raw index dong goc phuc vu tra cuu. Sheet nay dang bi `clear()` va ghi lai khi chay dong bo, nen khong duoc luu du lieu nghiep vu hen gio/nhac viec truc tiep vao day.
-- `NGUON_DU_LIEU` cau hinh cac Google Sheet nguon ben ngoai. Cac nguon ngoai hien chi nen duoc quet de tra cuu, khong nen bi sua/xoa dong trong v1.
+- Sidebar la noi thao tac chinh: tra cuu, hen viec, chuyen buoc, xem canh bao.
+- Sheet `DANH_SACH_CHUNG` la noi luu lich su va task theo tung khach: 1 khach = 1 dong, moi task/lich su = 1 o ngang.
+- Moi task dang theo doi co mau rieng theo tien do. Task da xong/chuyen buoc co dau `✓` va nen trang.
+- Co tab canh bao de biet hom nay/tuan nay co bao nhieu task moi chuyen cam/do va danh sach can xu ly truoc.
 
-## Quyet dinh da chot
+## Ten buoc chuan
 
-- Tao sheet nghiep vu moi: `DANH_SACH_CHUNG`.
-- Khong tao them vung nhap lieu hoac thao tac moi cho user; user van lam viec ngay tren dong khach hang trong sheet.
-- Them/chuẩn hóa 3 cot nhap lieu:
-  - `Hẹn giờ`: chi quan ly theo ngay, dung popup lich mac dinh cua Google Sheets.
-  - `Công việc hẹn giờ`: dropdown chuan theo dau viec trong flow.
-  - `Trạng thái hồ sơ`: dropdown chuan de ghi lich su trang thai.
-- Khi user nhap du `Hẹn giờ` + `Công việc hẹn giờ`, script tu tao/cap nhat ban ghi trong `DANH_SACH_CHUNG`.
-- Neu dong goc nam o sheet du lieu trong file hien tai va da ghi thanh cong sang `DANH_SACH_CHUNG`, xoa dong do khoi sheet hien tai; chi luu cong viec can theo doi o `DANH_SACH_CHUNG`.
-- Lich su can luu tuyen tinh theo thao tac doi `Trạng thái hồ sơ`, gom trang thai va ngay doi trang thai.
-- Hien thi lich su chinh trong sidebar dang co bang timeline, khong nhét lich su dai vao mot o.
-- Bao viec v1 la bao truc quan bang danh sach, phan loai va mau hang trong sheet; chua them email/popup thong bao rieng.
+| Ma | Ten hien thi |
+| --- | --- |
+| `NOP_HS` | Nộp HS |
+| `TB_THUE` | TB thuế |
+| `DA_NOP_THUE` | Đã nộp thuế |
+| `CO_SO` | Có sổ |
+| `TRA_HS` | Trả HS |
+| `DINH_CHINH` | Đính chính |
+| `NOP_DC` | Nộp ĐC |
+| `DC_XONG` | ĐC xong |
+| `PHAT_SINH` | Phát sinh |
 
-## Flow nghiep vu can ho tro
+Bo buoc `Trả hồ sơ cho khách` sau khi `Có sổ`.
 
-Flow trong file HTML gom cac buoc/moc chinh:
+## Cau truc sheet
 
-- `Nộp hồ sơ chính`
-- `Có thông báo nộp thuế`
-- `Báo khách nộp thuế`
-- `Đã nộp thuế`
-- `Có Sổ đỏ`
-- `Trả hồ sơ`
-- `Đã soạn thủ tục đính chính`
-- `Đã nộp hồ sơ đính chính`
-- `Đã đính chính xong`
-- `Đã trả hồ sơ cho khách`
-- `Quay lại bước nộp hồ sơ chính`
+`DANH_SACH_CHUNG` co cac cot dau co dinh:
 
-Moc thoi gian trong flow:
+```text
+Tên tra cứu | Tên khách hàng | SĐT | Loại hồ sơ | Địa chỉ đất | Gói thời hạn | File nguồn | Sheet nguồn | Dòng nguồn
+```
 
-- 15 ngay tu nop ho so den duyet/tra ho so.
-- 10 ngay de khach nop tien.
-- 10 ngay de soan ho so dinh chinh.
-- 7 ngay, 15 ngay, 1 thang, 3 thang hoac user tuy chon cho giai doan doi cap so.
-- 3 ngay de di nop ho so dinh chinh.
-- 7 ngay de dinh chinh thanh cong.
+Tu cot tiep theo tro di la lich su/task ngang:
 
-## Thiet ke du lieu
+```text
+Bản ghi 1 | Bản ghi 2 | Bản ghi 3 | ...
+```
 
-Them cau hinh trong Apps Script:
+Moi o task ghi ngan, du de script parse va to mau:
 
-- `SHEET_CONG_VIEC: "DANH_SACH_CHUNG"`.
-- `WORKFLOW_INPUT_HEADERS`: `["Hẹn giờ", "Công việc hẹn giờ", "Trạng thái hồ sơ"]`.
-- Danh muc `Công việc hẹn giờ` dang dropdown:
-  - `Báo khách nộp thuế`
-  - `Theo dõi khách nộp tiền`
-  - `Đợi cấp sổ đỏ`
-  - `Soạn hồ sơ đính chính`
-  - `Đi nộp hồ sơ đính chính`
-  - `Theo dõi đính chính xong`
-  - `Trả hồ sơ cho khách`
-  - `Quay lại nộp hồ sơ chính`
-- Danh muc `Trạng thái hồ sơ` dang dropdown:
-  - `Nộp hồ sơ chính`
-  - `Có thông báo nộp thuế`
-  - `Đã nộp thuế`
-  - `Có Sổ đỏ`
-  - `Trả hồ sơ`
-  - `Đã soạn đính chính`
-  - `Đã nộp hồ sơ đính chính`
-  - `Đã đính chính xong`
-  - `Đã trả hồ sơ cho khách`
+```text
+NOP_HS 01/01-07/01
+TB_THUE 07/01-08/01
+PHAT_SINH Gọi giấy 14/05-17/05
+✓ NOP_HS 01/01-07/01
+```
 
-`DANH_SACH_CHUNG` nen co cac cot toi thieu:
+Quy uoc:
 
-- `Tên tra cứu`
-- `Tên khách hàng`
-- `SĐT`
-- `Loại hồ sơ`
-- `Địa chỉ đất`
-- `Hẹn giờ`
-- `Công việc hẹn giờ`
-- `Trạng thái hồ sơ`
-- `Ngày đổi trạng thái`
-- `Ngày bắt đầu hạn`
-- `Thời hạn quy định`
-- `% hạn`
-- `File nguồn`
-- `Sheet nguồn`
-- `Dòng nguồn`
+- Khong co `✓`: task dang theo doi, co mau.
+- Co `✓`: task da xong/chuyen buoc, nen trang.
+- User co the sua/xoa truc tiep tung o task neu nhap nham.
 
-## Xu ly tu dong trong Apps Script
+## Rule thoi han
 
-- Them `onEdit(e)` de xu ly khi user sua 1 trong 3 cot workflow.
-- Neu sheet hien tai la sheet he thong (`DANH_SACH_KHACH`, `NGUON_DU_LIEU`, `QLKH_PERF_LOG`) thi bo qua.
-- Neu sheet hien tai la `DANH_SACH_CHUNG`:
-  - Cho phep user cap nhat tiep `Hẹn giờ`, `Công việc hẹn giờ`, `Trạng thái hồ sơ`.
-  - Khi doi `Trạng thái hồ sơ`, cap nhat `Ngày đổi trạng thái` va them mot ban ghi lich su tuyen tinh neu can giu lich su nhieu lan.
-  - Khi doi `Hẹn giờ` hoac `Công việc hẹn giờ`, reset `Ngày bắt đầu hạn` ve ngay hien tai va tinh lai mau hang.
-- Neu sheet hien tai la sheet du lieu trong file hien tai:
-  - Dam bao co 3 cot workflow neu thieu.
-  - Ap validation cho 3 cot.
-  - Khi co du `Hẹn giờ` va `Công việc hẹn giờ`, copy thong tin dong sang `DANH_SACH_CHUNG`.
-  - Sau khi ghi thanh cong, xoa dong nguon trong sheet hien tai.
-- Khong sua/xoa dong trong cac spreadsheet ngoai cau hinh qua `NGUON_DU_LIEU` trong v1.
+Luong chinh dung tong thoi gian: `15 ngày`, `1 tháng`, `3 tháng`, hoac so ngay tuy chon.
 
-## Mau hang theo tien do han
+Chia theo ty le:
 
-Mau hang trong `DANH_SACH_CHUNG` doi dan tu xanh la den do dam theo ty le thoi han da troi qua.
+| Buoc active | Y nghia | Ty le |
+| --- | --- | --- |
+| `NOP_HS` | Nộp HS -> TB thuế | 40% |
+| `TB_THUE` | TB thuế -> Đã nộp thuế | 5% |
+| `DA_NOP_THUE` | Đã nộp thuế -> Có sổ | 55% |
 
-- `Ngày bắt đầu hạn`: ngay tao ban ghi hoac ngay user doi dau viec/hen gio.
-- `Thời hạn quy định`: so ngay tu `Ngày bắt đầu hạn` den `Hẹn giờ`, toi thieu 1 ngay.
-- `% hạn`: so ngay da qua / `Thời hạn quy định`.
-- Bac mau moi 50%, toi da den 500%:
-  - 0%: xanh la, ho so moi chuyen buoc.
-  - 50%: vang.
-  - 100%: cam, den han.
-  - 150% den 450%: chuyen dan cam do sang do dam.
-  - >= 500%: do dam co dinh.
-- Cap nhat mau khi:
-  - Mo file.
-  - Sua dong trong workflow.
-  - Chay dong bo/setup.
-  - Chay menu bao tri neu them menu `Cập nhật màu nhắc việc`.
+Tinh bang moc cong don de tong luon khop:
 
-## Sidebar timeline
+- Moc 1 = round(tong ngay * 40%).
+- Moc 2 = round(tong ngay * 45%).
+- Moc 3 = tong ngay.
+- Duration tung buoc = chenh lech giua cac moc, toi thieu 1 ngay neu tong ngay du lon.
 
-- Giu bang tra cuu lich su hien tai.
-- Bo sung mot khoi timeline trong `SidebarTraCuu.html` khi chon ten khach hang.
-- Timeline doc tu `DANH_SACH_CHUNG`, loc theo `Tên tra cứu`, sap xep theo `Ngày đổi trạng thái` hoac `Ngày bắt đầu hạn`.
-- Hien thi dang tuyen tinh:
-  - `Nộp hồ sơ chính (01/01/2026)`
-  - `Trả hồ sơ (15/01/2026)`
-  - `Đã soạn đính chính (...)`
-  - `Trả hồ sơ (...)`
-- Neu khong co lich su trong `DANH_SACH_CHUNG`, sidebar van hien bang lich su cu tu `DANH_SACH_KHACH`.
+Vi du goi `15 ngày`:
 
-## Test va nghiem thu
+- `NOP_HS`: 6 ngay.
+- `TB_THUE`: 1 ngay.
+- `DA_NOP_THUE`: 8 ngay.
 
-Can cap nhat/bo sung test:
+Luong tra ho so/dinh chinh dung han cung:
 
-- Apps Script va sidebar JavaScript van parse duoc bang `new Function`.
-- Co cau hinh `SHEET_CONG_VIEC: "DANH_SACH_CHUNG"`.
-- `laSheetLoaiTru_` loai tru sheet moi de khong bi quet vao raw index.
-- Co data validation date cho `Hẹn giờ`.
-- Co dropdown cho `Công việc hẹn giờ` va `Trạng thái hồ sơ`.
-- Co logic tinh mau theo cac moc 0%, 50%, 100%, 150%, 500%.
-- Sidebar co timeline va van giu bang tra cuu cu.
+- `DINH_CHINH`: 10 ngay.
+- `NOP_DC`: 3 ngay.
+- `DC_XONG`: 7 ngay.
+- `TRA_HS` la moc lich su; khi chon `Trả HS`, he thong ghi moc `TRA_HS` va tao task `DINH_CHINH`.
 
-Nghiem thu thu cong trong Google Sheets:
+## Mau tien do tung o task
 
-- Nhap thieu mot trong hai truong `Hẹn giờ` hoac `Công việc hẹn giờ` thi chua chuyen dong.
-- Nhap du hai truong thi ban ghi xuat hien o `DANH_SACH_CHUNG` va dong nguon bi xoa.
-- Doi `Trạng thái hồ sơ` thi lich su ghi dung trang thai va ngay doi.
-- Cac hang trong `DANH_SACH_CHUNG` doi mau dung theo tien do han.
-- Chon ten khach trong sheet thi sidebar hien timeline dung thu tu.
+Tinh theo ngay bat dau/ket thuc trong tung o task:
 
-## Viec da lam ve git
+- 0-24%: xanh.
+- 25-49%: vang.
+- 50-99%: cam.
+- >=100%: do.
+- Sau han: do dam dan moi 50%, toi da 500%.
 
-Plan nay duoc luu de tiep tuc trien khai sau. Repo can duoc khoi tao va push len:
+Vi du `NOP_HS` goi 15 ngay co 6 ngay. Den ngay thu 3 la 50%, o chuyen cam.
 
-- Remote: `https://github.com/minhnhatnguyen6297-a11y/script_sheet.git`
-- Branch chinh: `main`
-- Commit khoi tao: `Initial script sheet project`
+## Sidebar
+
+Them tab vao sidebar hien co:
+
+### Tra cuu
+
+- Giu bang tra cuu hien tai tu `DANH_SACH_KHACH`.
+- Hien timeline lich su/task doc tu `DANH_SACH_CHUNG`.
+- Co nut `Mở dòng` de nhay toi dong khach trong `DANH_SACH_CHUNG`.
+
+### Hen viec
+
+- Hien khach dang chon.
+- Che do `Chuyển bước`: chon buoc chuan, chon/giu goi thoi han.
+- Che do `Phát sinh`: nhap noi dung ngan va chon ngay hen.
+- Bam `Lưu` moi ghi sheet.
+- Khi chuyen buoc, task active truoc do duoc them `✓` va nen trang; task moi ghi vao o trong ke tiep.
+
+### Canh bao
+
+- Hien so luong hom nay/tuan nay moi chuyen cam/do.
+- Hien danh sach uu tien:
+  - Do qua han lau nhat.
+  - Do moi den han.
+  - Cam moi chuyen.
+  - Cam cu chua xu ly.
+- Moi dong co nut `Mở dòng`.
+
+## Sheet log canh bao
+
+Tao sheet ky thuat `CANH_BAO_HAN` voi cac cot:
+
+```text
+Ngày ghi nhận | Tên khách | Bước | Mốc cũ | Mốc mới | Ô task | Ngày bắt đầu | Ngày kết thúc
+```
+
+Moi lan task doi moc canh bao thi ghi log de tinh hom nay/tuan nay moi chuyen cam/do.
+
+## Cap nhat va pham vi
+
+- Khi mo sidebar: cap nhat mau va canh bao.
+- Khi bam `Lưu` hen viec/chuyen buoc: cap nhat ngay dong do.
+- Them menu `Cập nhật cảnh báo` de chay thu cong.
+- V1 khong gui email/popup nhac viec.
+- V1 khong tao dashboard phuc tap.
+- V1 khong ep user nhap hen viec truc tiep trong sheet nguon.
+- V1 khong sua sheet nguon ngoai `NGUON_DU_LIEU`.

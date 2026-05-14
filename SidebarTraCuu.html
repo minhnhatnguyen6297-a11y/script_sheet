@@ -58,6 +58,30 @@
       margin-bottom: 10px;
     }
 
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .tab-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 7px 4px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      border-color: #185abc;
+      background: #e8f0fe;
+      color: #185abc;
+    }
+
     .lookup-btn {
       width: 100%;
       border: 1px solid #185abc;
@@ -176,6 +200,91 @@
       color: var(--muted);
       font-style: italic;
     }
+
+    .form-row {
+      display: grid;
+      gap: 5px;
+      margin-bottom: 10px;
+    }
+
+    .form-row label {
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    select,
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      font: inherit;
+      background: #fff;
+    }
+
+    textarea {
+      min-height: 64px;
+      resize: vertical;
+    }
+
+    .secondary-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .task-line {
+      border-top: 1px solid var(--line);
+      padding: 8px 0;
+    }
+
+    .task-line:first-child {
+      border-top: 0;
+    }
+
+    .level-ORANGE {
+      color: #b06000;
+      font-weight: 700;
+    }
+
+    .level-RED,
+    .level-RED_150,
+    .level-RED_200,
+    .level-RED_250,
+    .level-RED_300,
+    .level-RED_350,
+    .level-RED_400,
+    .level-RED_450,
+    .level-RED_500 {
+      color: var(--red);
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
@@ -186,6 +295,11 @@
     </div>
     <div class="action-bar">
       <button id="lookupActiveBtn" class="lookup-btn" type="button">Tra cứu ô đang chọn</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" type="button" data-tab="lookup">Tra cứu</button>
+      <button class="tab-btn" type="button" data-tab="task">Hẹn việc</button>
+      <button class="tab-btn" type="button" data-tab="alerts">Cảnh báo</button>
     </div>
     <div id="app" class="panel">
       <div class="loading-row">
@@ -214,6 +328,9 @@
     let clientPerfQueue = [];
     let clientPerfTimer = null;
     let clientPerfFlushing = false;
+    let activeTab = "lookup";
+    let workflowData = null;
+    let workflowLoading = false;
     const clientPerfSession = "sidebar-" + Date.now() + "-" + Math.floor(Math.random() * 100000);
     let lookupIndex = {
       loaded: false,
@@ -303,9 +420,30 @@
       document.getElementById("app").innerHTML = html;
     }
 
+    function setActiveTab(tab) {
+      activeTab = tab || "lookup";
+      document.querySelectorAll(".tab-btn").forEach(function (btn) {
+        btn.classList.toggle("active", btn.getAttribute("data-tab") === activeTab);
+      });
+      lastKey = "";
+      if (activeTab === "lookup") {
+        render(latestState || {});
+        return;
+      }
+      loadWorkflowData(activeTab);
+    }
+
     function render(state) {
       state = state || {};
       latestState = state;
+      if (activeTab === "task") {
+        renderTaskTab();
+        return;
+      }
+      if (activeTab === "alerts") {
+        renderAlertsTab();
+        return;
+      }
       const key = stateKey(state);
       if (key === lastKey) return;
       lastKey = key;
@@ -430,6 +568,12 @@
           currentSelectionKey = state.selectionKey || "";
           pendingLookupState = state;
           latestState = state;
+
+          if (activeTab !== "lookup") {
+            loadWorkflowData(activeTab);
+            flushClientPerf();
+            return;
+          }
 
           if (!lookupIndex.loaded) {
             renderLoading(state, true);
@@ -604,6 +748,176 @@
       `);
     }
 
+    function loadWorkflowData(tabAfterLoad) {
+      if (workflowLoading) return;
+      workflowLoading = true;
+      setHtml(`
+        <div class="loading-row">
+          <div class="spinner"></div>
+          <div>
+            <div class="name">Đang nạp ${activeTab === "alerts" ? "cảnh báo" : "hẹn việc"}</div>
+            <div class="muted">Đọc DANH_SACH_CHUNG và cập nhật màu task.</div>
+          </div>
+        </div>
+      `);
+      google.script.run
+        .withSuccessHandler(function (data) {
+          workflowLoading = false;
+          workflowData = data || {};
+          if (tabAfterLoad === "alerts" || activeTab === "alerts") {
+            renderAlertsTab();
+          } else {
+            renderTaskTab();
+          }
+        })
+        .withFailureHandler(function (err) {
+          workflowLoading = false;
+          setHtml(`<div class="error"><strong>Lỗi nạp hẹn việc</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .getWorkflowSidebarData(latestState || {});
+    }
+
+    function renderTaskTab() {
+      const data = workflowData || {};
+      const customer = data.customer || {};
+      const workflow = data.workflow || { tasks: [] };
+      const steps = data.steps || [];
+      const currentName = customer.ten || latestState.ten || "";
+      const stepOptions = steps
+        .filter(function (step) { return step.code !== "PHAT_SINH"; })
+        .map(function (step) {
+          return `<option value="${esc(step.code)}">${esc(step.label)}</option>`;
+        }).join("");
+      const history = renderWorkflowTimeline(workflow.tasks || []);
+      setHtml(`
+        <div class="name">${esc(currentName || "Chưa chọn khách")}</div>
+        <div class="meta">${workflow.rowNum ? "DANH_SACH_CHUNG · dòng " + esc(workflow.rowNum) : "Chưa có dòng trong DANH_SACH_CHUNG"}</div>
+        ${workflow.rowNum ? `<button class="secondary-btn" type="button" data-open-row="${esc(workflow.rowNum)}">Mở dòng</button>` : ""}
+        <div class="panel">
+          <div class="name">Chuyển bước</div>
+          <div class="form-row">
+            <label for="stepCode">Bước</label>
+            <select id="stepCode">${stepOptions}</select>
+          </div>
+          <div class="form-row">
+            <label for="totalDays">Gói thời hạn</label>
+            <select id="totalDays">
+              <option value="15">15 ngày</option>
+              <option value="30">1 tháng</option>
+              <option value="90">3 tháng</option>
+            </select>
+          </div>
+          <button id="saveStepBtn" class="lookup-btn" type="button">Lưu chuyển bước</button>
+        </div>
+        <div class="panel">
+          <div class="name">Phát sinh</div>
+          <div class="form-row">
+            <label for="flexNote">Nội dung ngắn</label>
+            <textarea id="flexNote" maxlength="40" placeholder="Ví dụ: Gọi giấy"></textarea>
+          </div>
+          <div class="form-row">
+            <label for="flexEndDate">Ngày hẹn</label>
+            <input id="flexEndDate" type="date">
+          </div>
+          <button id="saveFlexBtn" class="lookup-btn" type="button">Lưu phát sinh</button>
+        </div>
+        <div class="panel">
+          <div class="name">Lịch sử</div>
+          ${history}
+        </div>
+      `);
+    }
+
+    function renderAlertsTab() {
+      const alerts = workflowData && workflowData.alerts ? workflowData.alerts : {};
+      const priority = alerts.priority || [];
+      const priorityHtml = priority.length ? priority.map(function (item) {
+        return `
+          <div class="task-line">
+            <div><span class="level-${esc(item.level)}">${esc(item.level)}</span> ${esc(item.ten || "")}</div>
+            <div class="meta">${esc(item.text || "")}${item.overdueDays ? " · quá " + esc(item.overdueDays) + " ngày" : ""}</div>
+            <button class="secondary-btn" type="button" data-open-row="${esc(item.rowNum)}">Mở dòng</button>
+          </div>
+        `;
+      }).join("") : `<div class="empty">Chưa có task cam/đỏ cần ưu tiên.</div>`;
+      setHtml(`
+        <div class="name">Cảnh báo</div>
+        <div class="status-grid">
+          <div class="metric"><strong>${esc(alerts.todayOrange || 0)}</strong><span>Hôm nay cam</span></div>
+          <div class="metric"><strong>${esc(alerts.todayRed || 0)}</strong><span>Hôm nay đỏ</span></div>
+          <div class="metric"><strong>${esc(alerts.weekOrange || 0)}</strong><span>Tuần này cam</span></div>
+          <div class="metric"><strong>${esc(alerts.weekRed || 0)}</strong><span>Tuần này đỏ</span></div>
+        </div>
+        <div class="panel">
+          <div class="name">Cần xử lý trước</div>
+          ${priorityHtml}
+        </div>
+      `);
+    }
+
+    function renderWorkflowTimeline(tasks) {
+      if (!tasks.length) return `<div class="empty">Chưa có lịch sử hẹn việc.</div>`;
+      return tasks.map(function (task) {
+        const level = task.level || "";
+        return `
+          <div class="task-line">
+            <div><span class="level-${esc(level)}">${esc(level)}</span> ${esc(task.text || "")}</div>
+            <div class="meta">${esc(task.a1 || "")}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function saveStepTask() {
+      const button = document.getElementById("saveStepBtn");
+      if (button) button.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (button) button.disabled = false;
+          workflowData = result && result.data ? result.data : workflowData;
+          renderTaskTab();
+        })
+        .withFailureHandler(function (err) {
+          if (button) button.disabled = false;
+          setHtml(`<div class="error"><strong>Lỗi lưu chuyển bước</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .saveWorkflowTask({
+          mode: "step",
+          stepCode: document.getElementById("stepCode").value,
+          totalDays: document.getElementById("totalDays").value,
+          state: latestState || {}
+        });
+    }
+
+    function saveFlexTask() {
+      const button = document.getElementById("saveFlexBtn");
+      if (button) button.disabled = true;
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (button) button.disabled = false;
+          workflowData = result && result.data ? result.data : workflowData;
+          renderTaskTab();
+        })
+        .withFailureHandler(function (err) {
+          if (button) button.disabled = false;
+          setHtml(`<div class="error"><strong>Lỗi lưu phát sinh</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .saveWorkflowTask({
+          mode: "flex",
+          note: document.getElementById("flexNote").value,
+          endDate: document.getElementById("flexEndDate").value,
+          state: latestState || {}
+        });
+    }
+
+    function openWorkflowRowClient(rowNum) {
+      google.script.run
+        .withFailureHandler(function (err) {
+          setHtml(`<div class="error"><strong>Lỗi mở dòng</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
+        })
+        .openWorkflowRow(rowNum);
+    }
+
     function visibleColumns(headers, rows) {
       const result = [];
       headers.forEach(function (header, idx) {
@@ -641,6 +955,10 @@
           if (manualLookupTimestamp && (!state || Number(state.timestamp || 0) < manualLookupTimestamp)) {
             return;
           }
+          if (activeTab !== "lookup") {
+            latestState = state || latestState;
+            return;
+          }
           render(state);
         })
         .withFailureHandler(function (err) {
@@ -659,6 +977,20 @@
     refresh();
     setInterval(refresh, POLL_MS);
     document.getElementById("lookupActiveBtn").addEventListener("click", lookupActiveCell);
+    document.querySelectorAll(".tab-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        setActiveTab(btn.getAttribute("data-tab"));
+      });
+    });
+    document.addEventListener("click", function (event) {
+      const target = event.target;
+      if (!target) return;
+      if (target.id === "saveStepBtn") saveStepTask();
+      if (target.id === "saveFlexBtn") saveFlexTask();
+      if (target.getAttribute && target.getAttribute("data-open-row")) {
+        openWorkflowRowClient(target.getAttribute("data-open-row"));
+      }
+    });
     window.addEventListener("beforeunload", function () {
       flushClientPerf();
     });

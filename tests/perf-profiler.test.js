@@ -12,6 +12,14 @@ function read(filePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function loadServerExports(exportNames) {
+  const source = read(gsPath);
+  const exportBody = exportNames
+    .map((name) => `${name}: typeof ${name} !== "undefined" ? ${name} : undefined`)
+    .join(",");
+  return new Function(`${source}\nreturn {${exportBody}};`)();
+}
+
 test("project guidance records the customer lookup constraints", () => {
   const text = read(agentPath);
   assert.match(text, /DANH_SACH_KHACH.*raw index/i);
@@ -84,4 +92,148 @@ test("Apps Script and sidebar JavaScript still parse locally", () => {
   const match = html.match(/<script>([\s\S]*?)<\/script>/);
   assert.ok(match, "Sidebar script block is present");
   new Function(match[1]);
+});
+
+test("workflow config uses approved step names and keeps workflow sheets out of raw index", () => {
+  const source = read(gsPath);
+  assert.match(source, /SHEET_CONG_VIEC:\s*"DANH_SACH_CHUNG"/);
+  assert.match(source, /SHEET_CANH_BAO:\s*"CANH_BAO_HAN"/);
+  assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CONG_VIEC/);
+  assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CANH_BAO/);
+
+  const { WORKFLOW_CONFIG } = loadServerExports(["WORKFLOW_CONFIG"]);
+  assert.ok(WORKFLOW_CONFIG);
+  assert.deepStrictEqual(
+    WORKFLOW_CONFIG.STEPS.map((step) => [step.code, step.label]),
+    [
+      ["NOP_HS", "Nộp HS"],
+      ["TB_THUE", "TB thuế"],
+      ["DA_NOP_THUE", "Đã nộp thuế"],
+      ["CO_SO", "Có sổ"],
+      ["TRA_HS", "Trả HS"],
+      ["DINH_CHINH", "Đính chính"],
+      ["NOP_DC", "Nộp ĐC"],
+      ["DC_XONG", "ĐC xong"],
+      ["PHAT_SINH", "Phát sinh"]
+    ]
+  );
+});
+
+test("workflow rule durations split the main service by cumulative percentages and fixed correction windows", () => {
+  const {
+    tinhSoNgayBuocWorkflow_,
+    tinhTatCaSoNgayRuleChinh_
+  } = loadServerExports(["tinhSoNgayBuocWorkflow_", "tinhTatCaSoNgayRuleChinh_"]);
+
+  assert.strictEqual(typeof tinhSoNgayBuocWorkflow_, "function");
+  assert.strictEqual(typeof tinhTatCaSoNgayRuleChinh_, "function");
+
+  assert.deepStrictEqual(tinhTatCaSoNgayRuleChinh_(15), {
+    NOP_HS: 6,
+    TB_THUE: 1,
+    DA_NOP_THUE: 8
+  });
+  assert.deepStrictEqual(tinhTatCaSoNgayRuleChinh_(30), {
+    NOP_HS: 12,
+    TB_THUE: 2,
+    DA_NOP_THUE: 16
+  });
+  assert.deepStrictEqual(tinhTatCaSoNgayRuleChinh_(90), {
+    NOP_HS: 36,
+    TB_THUE: 5,
+    DA_NOP_THUE: 49
+  });
+
+  assert.strictEqual(tinhSoNgayBuocWorkflow_("DINH_CHINH", 15), 10);
+  assert.strictEqual(tinhSoNgayBuocWorkflow_("NOP_DC", 15), 3);
+  assert.strictEqual(tinhSoNgayBuocWorkflow_("DC_XONG", 15), 7);
+});
+
+test("workflow task cells stay compact and parse enough data for coloring", () => {
+  const {
+    taoNoiDungTaskCell_,
+    parseWorkflowTaskCell_
+  } = loadServerExports(["taoNoiDungTaskCell_", "parseWorkflowTaskCell_"]);
+
+  assert.strictEqual(typeof taoNoiDungTaskCell_, "function");
+  assert.strictEqual(typeof parseWorkflowTaskCell_, "function");
+
+  const taskText = taoNoiDungTaskCell_({
+    code: "NOP_HS",
+    startDate: new Date(2026, 0, 1),
+    endDate: new Date(2026, 0, 7),
+    done: false
+  });
+  assert.strictEqual(taskText, "NOP_HS 01/01-07/01");
+
+  const flexText = taoNoiDungTaskCell_({
+    code: "PHAT_SINH",
+    note: "Gọi giấy",
+    startDate: new Date(2026, 4, 14),
+    endDate: new Date(2026, 4, 17),
+    done: false
+  });
+  assert.strictEqual(flexText, "PHAT_SINH Gọi giấy 14/05-17/05");
+
+  assert.deepStrictEqual(parseWorkflowTaskCell_("✓ NOP_HS 01/01-07/01", 2026), {
+    done: true,
+    code: "NOP_HS",
+    note: "",
+    startDate: "2026-01-01",
+    endDate: "2026-01-07"
+  });
+  assert.deepStrictEqual(parseWorkflowTaskCell_(flexText, 2026), {
+    done: false,
+    code: "PHAT_SINH",
+    note: "Gọi giấy",
+    startDate: "2026-05-14",
+    endDate: "2026-05-17"
+  });
+});
+
+test("workflow alert levels escalate per task and completed cells stay white", () => {
+  const { tinhMocCanhBaoTask_, layMauMocCanhBao_ } = loadServerExports([
+    "tinhMocCanhBaoTask_",
+    "layMauMocCanhBao_"
+  ]);
+
+  assert.strictEqual(typeof tinhMocCanhBaoTask_, "function");
+  assert.strictEqual(typeof layMauMocCanhBao_, "function");
+
+  assert.strictEqual(
+    tinhMocCanhBaoTask_("NOP_HS 01/01-07/01", new Date(2026, 0, 1)),
+    "GREEN"
+  );
+  assert.strictEqual(
+    tinhMocCanhBaoTask_("NOP_HS 01/01-07/01", new Date(2026, 0, 3)),
+    "YELLOW"
+  );
+  assert.strictEqual(
+    tinhMocCanhBaoTask_("NOP_HS 01/01-07/01", new Date(2026, 0, 4)),
+    "ORANGE"
+  );
+  assert.strictEqual(
+    tinhMocCanhBaoTask_("NOP_HS 01/01-07/01", new Date(2026, 0, 7)),
+    "RED"
+  );
+  assert.strictEqual(
+    tinhMocCanhBaoTask_("✓ NOP_HS 01/01-07/01", new Date(2026, 0, 7)),
+    "DONE"
+  );
+
+  assert.strictEqual(layMauMocCanhBao_("DONE"), "#ffffff");
+  assert.strictEqual(layMauMocCanhBao_("ORANGE"), "#fbbc04");
+  assert.strictEqual(layMauMocCanhBao_("RED"), "#ea4335");
+});
+
+test("sidebar exposes lookup, task scheduling, and alert tabs backed by server calls", () => {
+  const html = read(htmlPath);
+  assert.match(html, /data-tab="lookup"/);
+  assert.match(html, /data-tab="task"/);
+  assert.match(html, /data-tab="alerts"/);
+  assert.match(html, /Hẹn việc/);
+  assert.match(html, /Cảnh báo/);
+  assert.match(html, /\.saveWorkflowTask\(/);
+  assert.match(html, /\.getWorkflowSidebarData\(/);
+  assert.match(html, /\.openWorkflowRow\(/);
 });
