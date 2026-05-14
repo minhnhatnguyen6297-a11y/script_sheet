@@ -96,9 +96,11 @@ test("Apps Script and sidebar JavaScript still parse locally", () => {
 
 test("workflow config uses approved step names and keeps workflow sheets out of raw index", () => {
   const source = read(gsPath);
-  assert.match(source, /SHEET_CONG_VIEC:\s*"DANH_SACH_CHUNG"/);
+  assert.match(source, /SHEET_CONG_VIEC:\s*"QLKH"/);
+  assert.match(source, /SHEET_CONG_VIEC_CU:\s*"DANH_SACH_CHUNG"/);
   assert.match(source, /SHEET_CANH_BAO:\s*"CANH_BAO_HAN"/);
   assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CONG_VIEC/);
+  assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CONG_VIEC_CU/);
   assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CANH_BAO/);
 
   const { WORKFLOW_CONFIG } = loadServerExports(["WORKFLOW_CONFIG"]);
@@ -117,6 +119,56 @@ test("workflow config uses approved step names and keeps workflow sheets out of 
       ["PHAT_SINH", "Phát sinh"]
     ]
   );
+});
+
+test("sync output filters junk, duplicate, and accounting-only source headers", () => {
+  const { taoHeaderDescriptors_ } = loadServerExports(["taoHeaderDescriptors_"]);
+  assert.strictEqual(typeof taoHeaderDescriptors_, "function");
+
+  const descriptors = taoHeaderDescriptors_([
+    "Ngày nhận hồ sơ",
+    "Tên khách hàng",
+    "Địa chỉ",
+    "SĐT",
+    "Loại hồ sơ",
+    "Yêu Cầu",
+    "Trạng thái",
+    "Thù Lao",
+    "Người làm hồ sơ",
+    "Người nhận uỷ quyền",
+    "Ngày nộp HS",
+    "Mã HS",
+    "Ghi chú",
+    "Ghi chú",
+    "ngày dự kiến sang thuế",
+    "Ngày",
+    "Thu",
+    "Chi",
+    "Column 6",
+    "",
+    "Bản ghi 1"
+  ]).filter(Boolean);
+
+  assert.deepStrictEqual(
+    descriptors.map((descriptor) => descriptor.label),
+    [
+      "Ngày nhận hồ sơ",
+      "Tên khách hàng",
+      "Địa chỉ",
+      "SĐT",
+      "Loại hồ sơ",
+      "Yêu Cầu",
+      "Trạng thái",
+      "Thù Lao",
+      "Người làm hồ sơ",
+      "Người nhận uỷ quyền",
+      "Ngày nộp HS",
+      "Mã HS",
+      "Ghi chú",
+      "Bản ghi 1"
+    ]
+  );
+  assert.ok(!descriptors.some((descriptor) => /\(\d+\)$/.test(descriptor.label)));
 });
 
 test("workflow rule durations split the main service by cumulative percentages and fixed correction windows", () => {

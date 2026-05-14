@@ -11,6 +11,36 @@ const CONFIG = {
   SHEET_PERF: "QLKH_PERF_LOG",
   HEADERS_NGUON: ["Tên nguồn", "URL hoặc ID Google Sheet", "Bật/Tắt"],
   TECH_HEADERS: ["Tên tra cứu", "Tên gốc", "File nguồn", "Sheet nguồn", "Dòng nguồn"],
+  SYNC_ALLOWED_HEADER_KEYS: [
+    "ngay_nhan_ho_so",
+    "ngay_nhan",
+    "ten_khach_hang",
+    "ten_khach",
+    "ho_ten",
+    "ten_kh",
+    "khach_hang",
+    "dia_chi",
+    "dia_chi_dat",
+    "dia_chi_tai_san",
+    "thua_dat",
+    "sdt",
+    "so_dien_thoai",
+    "phone",
+    "dien_thoai",
+    "loai_ho_so",
+    "loai_hs",
+    "loai",
+    "yeu_cau",
+    "trang_thai",
+    "thu_lao",
+    "nguoi_lam_ho_so",
+    "nguoi_nhan_uy_quyen",
+    "ngay_nop_hs",
+    "ma_hs",
+    "hen_gio",
+    "ghi_chu"
+  ],
+  SYNC_ALLOWED_HEADER_PREFIXES: ["ban_ghi"],
   HEADERS: {
     ten: {
       bat_buoc: true,
@@ -61,7 +91,8 @@ const PERF_CONFIG = {
 };
 
 const WORKFLOW_CONFIG = {
-  SHEET_CONG_VIEC: "DANH_SACH_CHUNG",
+  SHEET_CONG_VIEC: "QLKH",
+  SHEET_CONG_VIEC_CU: "DANH_SACH_CHUNG",
   SHEET_CANH_BAO: "CANH_BAO_HAN",
   FIXED_HEADERS: ["Tên tra cứu", "Tên khách hàng", "SĐT", "Loại hồ sơ", "Địa chỉ đất", "Gói thời hạn", "File nguồn", "Sheet nguồn", "Dòng nguồn"],
   ALERT_HEADERS: ["Ngày ghi nhận", "Tên khách", "Bước", "Mốc cũ", "Mốc mới", "Ô task", "Ngày bắt đầu", "Ngày kết thúc"],
@@ -279,6 +310,7 @@ function thuThapDongGocTuSpreadsheet_(source, allHeaders, records, perfSession) 
     const headerRow = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
     const descriptors = taoHeaderDescriptors_(headerRow);
     descriptors.forEach(function (descriptor) {
+      if (!descriptor) return;
       if (!allHeaders.has(descriptor.key)) {
         allHeaders.set(descriptor.key, descriptor);
       }
@@ -296,6 +328,7 @@ function thuThapDongGocTuSpreadsheet_(source, allHeaders, records, perfSession) 
 
       const valuesByKey = {};
       descriptors.forEach(function (descriptor, colIdx) {
+        if (!descriptor) return;
         valuesByKey[descriptor.key] = cleanCellText_(row[colIdx]);
       });
 
@@ -456,6 +489,7 @@ function laSheetLoaiTru_(sheetName) {
     sheetName === CONFIG.SHEET_NGUON ||
     sheetName === CONFIG.SHEET_PERF ||
     sheetName === WORKFLOW_CONFIG.SHEET_CONG_VIEC ||
+    sheetName === WORKFLOW_CONFIG.SHEET_CONG_VIEC_CU ||
     sheetName === WORKFLOW_CONFIG.SHEET_CANH_BAO;
 }
 
@@ -464,6 +498,9 @@ function taoHeaderDescriptors_(headerRow) {
   return headerRow.map(function (raw, idx) {
     const baseLabel = cleanCellText_(raw) || ("Cột " + (idx + 1));
     const baseKey = chuanHoaHeaderKey_(baseLabel) || ("cot_" + (idx + 1));
+    if (!laHeaderDongBoHopLe_(baseLabel, baseKey, seen)) {
+      return null;
+    }
     seen[baseKey] = (seen[baseKey] || 0) + 1;
 
     if (seen[baseKey] === 1) {
@@ -474,6 +511,15 @@ function taoHeaderDescriptors_(headerRow) {
       key: baseKey + "__" + seen[baseKey],
       label: baseLabel + " (" + seen[baseKey] + ")"
     };
+  });
+}
+
+function laHeaderDongBoHopLe_(label, key, seen) {
+  if (!label || /^cot_\d+$/.test(key) || /^column_\d+$/.test(key)) return false;
+  if (seen[key]) return false;
+  if (CONFIG.SYNC_ALLOWED_HEADER_KEYS.indexOf(key) !== -1) return true;
+  return CONFIG.SYNC_ALLOWED_HEADER_PREFIXES.some(function (prefix) {
+    return key.indexOf(prefix) === 0;
   });
 }
 
@@ -1046,7 +1092,15 @@ function layMauMocCanhBao_(level) {
 
 function damBaoSheetCongViec_(ss) {
   let sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (!sh) sh = ss.insertSheet(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
+  if (!sh) {
+    const oldSheet = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC_CU);
+    if (oldSheet) {
+      oldSheet.setName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
+      sh = oldSheet;
+    } else {
+      sh = ss.insertSheet(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
+    }
+  }
   damBaoKichThuocSheet_(sh, 1, WORKFLOW_CONFIG.FIXED_HEADERS.length + 10);
   sh.getRange(1, 1, 1, WORKFLOW_CONFIG.FIXED_HEADERS.length)
     .setValues([WORKFLOW_CONFIG.FIXED_HEADERS])

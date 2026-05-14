@@ -756,7 +756,7 @@
           <div class="spinner"></div>
           <div>
             <div class="name">Đang nạp ${activeTab === "alerts" ? "cảnh báo" : "hẹn việc"}</div>
-            <div class="muted">Đọc DANH_SACH_CHUNG và cập nhật màu task.</div>
+            <div class="muted">Đọc QLKH và cập nhật màu task.</div>
           </div>
         </div>
       `);
@@ -791,7 +791,7 @@
       const history = renderWorkflowTimeline(workflow.tasks || []);
       setHtml(`
         <div class="name">${esc(currentName || "Chưa chọn khách")}</div>
-        <div class="meta">${workflow.rowNum ? "DANH_SACH_CHUNG · dòng " + esc(workflow.rowNum) : "Chưa có dòng trong DANH_SACH_CHUNG"}</div>
+        <div class="meta">${workflow.rowNum ? "QLKH · dòng " + esc(workflow.rowNum) : "Chưa có dòng trong QLKH"}</div>
         ${workflow.rowNum ? `<button class="secondary-btn" type="button" data-open-row="${esc(workflow.rowNum)}">Mở dòng</button>` : ""}
         <div class="panel">
           <div class="name">Chuyển bước</div>
