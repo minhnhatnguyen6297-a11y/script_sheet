@@ -59,6 +59,48 @@ test("server profiler exposes menu actions and excludes the log sheet from sync"
   assert.match(source, /sheetName === CONFIG\.SHEET_PERF/);
 });
 
+test("customer management menu is lightweight and exposes automation setup", () => {
+  const source = read(gsPath);
+  const onOpenBody = extractFunctionBody(source, "onOpen");
+  assert.match(onOpenBody, /taoMenuQuanLyKh_\(\)/);
+  assert.doesNotMatch(onOpenBody, /dongBoDanhSachKH|capNhatCanhBaoWorkflow|moSidebarRealtime|ScriptApp/);
+
+  const menuBody = extractFunctionBody(source, "taoMenuQuanLyKh_");
+  assert.match(menuBody, /createMenu\("[^"]*KH"\)/);
+  assert.match(menuBody, /addItem\("[^"]*KH",\s*"moSidebarRealtime"\)/);
+  assert.match(menuBody, /addItem\("[^"]*DANH_SACH_KHACH",\s*"dongBoDanhSachKH"\)/);
+  assert.match(menuBody, /addItem\("[^"]*",\s*"capNhatCanhBaoWorkflow"\)/);
+  assert.match(menuBody, /addItem\("[^"]*trigger[^"]*",\s*"caiTriggerTuDong"\)/);
+});
+
+test("installable triggers are idempotent and use background-safe handlers", () => {
+  const source = read(gsPath);
+  assert.match(source, /OPEN_HANDLER:\s*"onOpenInstalled"/);
+  assert.match(source, /DAILY_HANDLER:\s*"chayCapNhatNenHangNgay"/);
+  assert.match(source, /function caiTriggerTuDong\(\)/);
+  assert.match(source, /function onOpenInstalled\(/);
+  assert.match(source, /function chayCapNhatNenHangNgay\(\)/);
+
+  const installBody = extractFunctionBody(source, "caiTriggerTuDong");
+  assert.match(installBody, /damBaoTriggerTuDong_\(ss\)/);
+  assert.match(installBody, /xoaRealtimeTriggers_\(\)/);
+
+  const ensureBody = extractFunctionBody(source, "damBaoTriggerTuDong_");
+  assert.match(ensureBody, /ScriptApp\.newTrigger\(AUTOMATION_CONFIG\.OPEN_HANDLER\)/);
+  assert.match(ensureBody, /\.forSpreadsheet\(ss\)\s*\.onOpen\(\)\s*\.create\(\)/s);
+  assert.match(ensureBody, /ScriptApp\.newTrigger\(AUTOMATION_CONFIG\.DAILY_HANDLER\)/);
+  assert.match(ensureBody, /\.timeBased\(\)\s*\.everyDays\(1\)\s*\.atHour\(AUTOMATION_CONFIG\.DAILY_HOUR\)\s*\.create\(\)/s);
+
+  const uniqueBody = extractFunctionBody(source, "damBaoTriggerDuyNhat_");
+  assert.match(uniqueBody, /ScriptApp\.getProjectTriggers\(\)/);
+  assert.match(uniqueBody, /getHandlerFunction\(\) === handler/);
+  assert.match(uniqueBody, /ScriptApp\.deleteTrigger/);
+
+  const dailyBody = extractFunctionBody(source, "chayCapNhatNenHangNgay");
+  assert.match(dailyBody, /capNhatMauVaCanhBaoWorkflow_\(ss,\s*new Date\(\)\)/);
+  assert.doesNotMatch(dailyBody, /getUi\(\)|alert\(/);
+});
+
 test("server code records key stages for bottleneck analysis", () => {
   const source = read(gsPath);
   [

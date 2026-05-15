@@ -84,6 +84,14 @@ const REALTIME_CONFIG = {
   MAX_RESULTS: 100
 };
 
+const AUTOMATION_CONFIG = {
+  OPEN_HANDLER: "onOpenInstalled",
+  DAILY_HANDLER: "chayCapNhatNenHangNgay",
+  SPREADSHEET_ID_KEY: "QLKH_SPREADSHEET_ID",
+  INSTALLED_AT_KEY: "QLKH_AUTO_TRIGGERS_INSTALLED_AT",
+  DAILY_HOUR: 7
+};
+
 const PERF_CONFIG = {
   ENABLED_KEY: "QLKH_PERF_ENABLED_V1",
   HEADERS: ["Thời điểm", "Session", "Nguồn", "Stage", "Duration ms", "Rows", "Cols", "Cells", "Message", "Meta JSON"],
@@ -133,16 +141,23 @@ const WORKFLOW_CONFIG = {
 
 // =============== MENU ===============
 function onOpen() {
+  taoMenuQuanLyKh_();
+}
+
+function onOpenInstalled(e) {
+  taoMenuQuanLyKh_();
+}
+
+function taoMenuQuanLyKh_() {
   SpreadsheetApp.getUi()
     .createMenu("Quản lý KH")
-    .addItem("⚙️ Bật tự mở sidebar", "batRealtimeSidebar")
-    .addItem("📌 Mở sidebar tra cứu", "moSidebarRealtime")
+    .addItem("📌 Mở quản lý KH", "moSidebarRealtime")
     .addSeparator()
     .addItem("🔄 Đồng bộ DANH_SACH_KHACH", "dongBoDanhSachKH")
+    .addItem("🟠 Cập nhật cảnh báo hạn", "capNhatCanhBaoWorkflow")
+    .addItem("⚙️ Cài trigger tự động", "caiTriggerTuDong")
+    .addSeparator()
     .addItem("🔍 Xem sheet & cột được phát hiện", "xemPhatHien")
-    .addSeparator()
-    .addItem("🟠 Cập nhật cảnh báo", "capNhatCanhBaoWorkflow")
-    .addSeparator()
     .addItem("📊 Bật đo tốc độ", "batDoTocDo")
     .addItem("🧹 Xóa log đo", "xoaLogDoTocDo")
     .addItem("📈 Xem báo cáo tốc độ", "xemBaoCaoTocDo")
@@ -542,6 +557,93 @@ function batRealtimeSidebar() {
     "Từ lần mở file sau, sidebar sẽ tự mở.\n\nTra cứu khi chọn ô Tên khách hàng dùng onSelectionChange(e), không cần bật trigger riêng.",
     SpreadsheetApp.getUi().ButtonSet.OK
   );
+}
+
+function caiTriggerTuDong() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  xoaRealtimeTriggers_();
+  const result = damBaoTriggerTuDong_(ss);
+
+  const msg = [
+    "Menu Quản lý KH khi mở file: " + (result.open.created ? "đã tạo" : "đã có"),
+    "Cập nhật cảnh báo hạn hằng ngày khoảng 7h: " + (result.daily.created ? "đã tạo" : "đã có"),
+    "",
+    "Trigger chạy bằng quyền của tài khoản vừa cài. Không cần nhân viên cài lại."
+  ].join("\n");
+
+  SpreadsheetApp.getUi().alert(
+    "Đã cài trigger tự động",
+    msg,
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
+}
+
+function chayCapNhatNenHangNgay() {
+  const ss = laySpreadsheetQuanLyKh_();
+  const startedAt = Date.now();
+  const result = capNhatMauVaCanhBaoWorkflow_(ss, new Date());
+  recordPerfEvent_("workflow.daily", startedAt, {
+    source: ss.getName(),
+    rows: result.tasks,
+    message: "Cập nhật cảnh báo hạn hằng ngày",
+    meta: { logs: result.logs }
+  });
+  return result;
+}
+
+function damBaoTriggerTuDong_(ss) {
+  PropertiesService.getScriptProperties().setProperty(
+    AUTOMATION_CONFIG.SPREADSHEET_ID_KEY,
+    ss.getId()
+  );
+  PropertiesService.getDocumentProperties().setProperty(
+    AUTOMATION_CONFIG.INSTALLED_AT_KEY,
+    new Date().toISOString()
+  );
+
+  const open = damBaoTriggerDuyNhat_(AUTOMATION_CONFIG.OPEN_HANDLER, function () {
+    ScriptApp.newTrigger(AUTOMATION_CONFIG.OPEN_HANDLER)
+      .forSpreadsheet(ss)
+      .onOpen()
+      .create();
+  });
+  const daily = damBaoTriggerDuyNhat_(AUTOMATION_CONFIG.DAILY_HANDLER, function () {
+    ScriptApp.newTrigger(AUTOMATION_CONFIG.DAILY_HANDLER)
+      .timeBased()
+      .everyDays(1)
+      .atHour(AUTOMATION_CONFIG.DAILY_HOUR)
+      .create();
+  });
+
+  return { open: open, daily: daily };
+}
+
+function damBaoTriggerDuyNhat_(handler, createTrigger) {
+  const triggers = ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === handler;
+  });
+
+  triggers.slice(1).forEach(function (trigger) {
+    ScriptApp.deleteTrigger(trigger);
+  });
+
+  if (triggers.length) {
+    return { handler: handler, created: false, removed: triggers.length - 1 };
+  }
+
+  createTrigger();
+  return { handler: handler, created: true, removed: 0 };
+}
+
+function laySpreadsheetQuanLyKh_() {
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+
+  const id = PropertiesService.getScriptProperties().getProperty(AUTOMATION_CONFIG.SPREADSHEET_ID_KEY);
+  if (!id) {
+    throw new Error("Chưa cài trigger tự động cho file quản lý KH.");
+  }
+  return SpreadsheetApp.openById(id);
 }
 
 function moSidebarRealtimeKhiMoFile_() {

@@ -21,6 +21,8 @@ Du an la Google Apps Script cho Google Sheet quan ly khach hang va tra cuu lich 
 - Du lieu can tim kiem trong sidebar thi nap mot lan vao browser; du lieu can chinh xac tuyet doi thi doc lai tu dong goc.
 - Du lieu nguon ngoai duoc cau hinh qua `NGUON_DU_LIEU`.
 - Sheet log/do toc do chi phuc vu chan doan, khong duoc xem la nguon du lieu khach hang.
+- `onOpen()` chi tao menu `Quan ly KH`, khong dong bo, khong quet han, khong mo sidebar.
+- Trigger tu dong do `caiTriggerTuDong` quan ly: installable onOpen chi tao menu, trigger hang ngay chi cap nhat mau/canh bao han.
 
 ## Nguyen tac sidebar
 

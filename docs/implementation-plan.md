@@ -146,12 +146,15 @@ Ngày ghi nhận | Sheet nguồn | Tên khách | Bước | Mốc cũ | Mốc m�
 
 Moi lan task doi moc canh bao thi ghi log de tinh hom nay/tuan nay moi chuyen cam/do.
 
-## Cap nhat va pham vi
+## Cap nhat, trigger va pham vi
 
-- Khi mo sidebar: cap nhat mau va canh bao.
+- `onOpen()` chi tao menu `Quan ly KH`, khong dong bo, khong quet han, khong mo sidebar de tranh lam cham luc mo file.
 - Khi mo tab hen viec: chi doc dong ho so dang chon.
 - Khi bam `Lưu` hen viec/chuyen buoc: ghi task vao dong ho so cua sheet thang va cap nhat mau ngay dong do.
-- Them menu `Cập nhật cảnh báo` de cap nhat mau/log canh bao toan bo file khi can.
+- Menu `Quan ly KH` co cac muc chinh: mo sidebar, dong bo `DANH_SACH_KHACH`, cap nhat canh bao han, cai trigger tu dong.
+- `caiTriggerTuDong` chi can chay mot lan bang tai khoan chu/quan tri file; ham nay tranh tao trigger trung.
+- Installable onOpen trigger chi tao lai menu khi mo file.
+- Time-driven trigger hang ngay goi ham nen `chayCapNhatNenHangNgay` de cap nhat mau/log canh bao toan bo file, khong dung popup/UI.
 - Khi dong bo `DANH_SACH_KHACH`, chi giu cac cot nghiep vu can tra cuu. Bo qua cot rong, cot sinh tu dong dang `Column ...`/`Cot ...`, cot ke toan `Ngày`/`Thu`/`Chi`, cot phu nhu `ngày dự kiến sang thuế`, va duplicate nhu `Ghi chú (2)`.
 - V1 khong gui email/popup nhac viec.
 - V1 khong tao dashboard phuc tap.
