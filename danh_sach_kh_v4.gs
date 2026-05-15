@@ -91,12 +91,10 @@ const PERF_CONFIG = {
 };
 
 const WORKFLOW_CONFIG = {
-  SHEET_CONG_VIEC: "QLKH",
-  SHEET_CONG_VIEC_CU: "DANH_SACH_CHUNG",
   SHEET_CANH_BAO: "CANH_BAO_HAN",
-  FIXED_HEADERS: ["Tên tra cứu", "Tên khách hàng", "SĐT", "Loại hồ sơ", "Địa chỉ đất", "Gói thời hạn", "File nguồn", "Sheet nguồn", "Dòng nguồn"],
-  ALERT_HEADERS: ["Ngày ghi nhận", "Tên khách", "Bước", "Mốc cũ", "Mốc mới", "Ô task", "Ngày bắt đầu", "Ngày kết thúc"],
-  RECORD_HEADER_PREFIX: "Bản ghi ",
+  LEGACY_WORKFLOW_SHEETS: ["QLKH", "DANH_SACH_CHUNG"],
+  ALERT_HEADERS: ["Ngày ghi nhận", "Sheet nguồn", "Tên khách", "Bước", "Mốc cũ", "Mốc mới", "Ô task", "Ngày bắt đầu", "Ngày kết thúc"],
+  TASK_HEADER_PREFIX: "Bản ghi ",
   DEFAULT_TOTAL_DAYS: 15,
   STEPS: [
     { code: "NOP_HS", label: "Nộp HS" },
@@ -488,8 +486,7 @@ function laSheetLoaiTru_(sheetName) {
   return sheetName === CONFIG.SHEET_DS ||
     sheetName === CONFIG.SHEET_NGUON ||
     sheetName === CONFIG.SHEET_PERF ||
-    sheetName === WORKFLOW_CONFIG.SHEET_CONG_VIEC ||
-    sheetName === WORKFLOW_CONFIG.SHEET_CONG_VIEC_CU ||
+    WORKFLOW_CONFIG.LEGACY_WORKFLOW_SHEETS.indexOf(sheetName) !== -1 ||
     sheetName === WORKFLOW_CONFIG.SHEET_CANH_BAO;
 }
 
@@ -913,10 +910,11 @@ function capNhatCanhBaoWorkflow() {
 
 function getWorkflowSidebarData(state) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  anSheetWorkflowCu_(ss);
   capNhatMauVaCanhBaoWorkflow_(ss, new Date());
   const safeState = state || getActiveCellLookupState();
   const customer = taoThongTinKhachWorkflow_(ss, safeState);
-  const workflow = layWorkflowTheoTenKey_(ss, customer.tenKey);
+  const workflow = layWorkflowTheoState_(ss, safeState);
   const alerts = layTongHopCanhBaoWorkflow_(ss, new Date());
   return {
     customer: customer,
@@ -930,10 +928,10 @@ function getWorkflowSidebarData(state) {
 function saveWorkflowTask(payload) {
   payload = payload || {};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  anSheetWorkflowCu_(ss);
   const state = payload.state || getActiveCellLookupState();
   const customer = taoThongTinKhachWorkflow_(ss, state);
-  const sh = damBaoSheetCongViec_(ss);
-  const rowNum = damBaoDongKhachWorkflow_(sh, customer);
+  const target = layWorkflowTargetTuState_(ss, state);
   const now = new Date();
   const totalDays = chuanHoaSoNgayGoi_(payload.totalDays || customer.totalDays || WORKFLOW_CONFIG.DEFAULT_TOTAL_DAYS);
   const mode = cleanCellText_(payload.mode || "step");
@@ -945,7 +943,7 @@ function saveWorkflowTask(payload) {
     const endDate = parseWorkflowInputDate_(payload.endDate);
     if (!endDate) throw new Error("Hãy chọn ngày hẹn.");
     const startDate = parseWorkflowInputDate_(payload.startDate) || now;
-    appendWorkflowTaskCell_(sh, rowNum, taoNoiDungTaskCell_({
+    appendWorkflowTaskCell_(target.sheet, target.rowNum, taoNoiDungTaskCell_({
       code: "PHAT_SINH",
       note: note,
       startDate: startDate,
@@ -956,16 +954,16 @@ function saveWorkflowTask(payload) {
   } else {
     const code = cleanCellText_(payload.stepCode || "");
     if (!code) throw new Error("Hãy chọn bước cần chuyển.");
-    danhDauTaskRuleDangMo_(sh, rowNum);
+    danhDauTaskRuleDangMo_(target.sheet, target.rowNum);
 
     if (code === "TRA_HS") {
-      appendWorkflowTaskCell_(sh, rowNum, taoNoiDungTaskCell_({
+      appendWorkflowTaskCell_(target.sheet, target.rowNum, taoNoiDungTaskCell_({
         code: "TRA_HS",
         startDate: now,
         endDate: now,
         done: true
       }));
-      appendWorkflowTaskCell_(sh, rowNum, taoNoiDungTaskCell_({
+      appendWorkflowTaskCell_(target.sheet, target.rowNum, taoNoiDungTaskCell_({
         code: "DINH_CHINH",
         startDate: now,
         endDate: congNgay_(now, tinhSoNgayBuocWorkflow_("DINH_CHINH", totalDays)),
@@ -973,7 +971,7 @@ function saveWorkflowTask(payload) {
       }));
       messages.push("Đã ghi Trả HS và tạo task Đính chính.");
     } else if (code === "CO_SO") {
-      appendWorkflowTaskCell_(sh, rowNum, taoNoiDungTaskCell_({
+      appendWorkflowTaskCell_(target.sheet, target.rowNum, taoNoiDungTaskCell_({
         code: "CO_SO",
         startDate: now,
         endDate: now,
@@ -983,7 +981,7 @@ function saveWorkflowTask(payload) {
     } else {
       const days = tinhSoNgayBuocWorkflow_(code, totalDays);
       if (!days) throw new Error("Bước không có thời hạn theo dõi: " + code);
-      appendWorkflowTaskCell_(sh, rowNum, taoNoiDungTaskCell_({
+      appendWorkflowTaskCell_(target.sheet, target.rowNum, taoNoiDungTaskCell_({
         code: code,
         startDate: now,
         endDate: congNgay_(now, days),
@@ -992,26 +990,31 @@ function saveWorkflowTask(payload) {
       messages.push("Đã tạo task " + code + ".");
     }
 
-    sh.getRange(rowNum, 6).setValue(totalDays + " ngày");
+    const totalDaysCol = timCotGoiThoiHanWorkflow_(target.sheet);
+    if (totalDaysCol) {
+      target.sheet.getRange(target.rowNum, totalDaysCol).setValue(totalDays + " ngày");
+    }
   }
 
   capNhatMauVaCanhBaoWorkflow_(ss, now);
   return {
     ok: true,
     message: messages.join(" "),
-    rowNum: rowNum,
+    rowNum: target.rowNum,
+    sheetName: target.sheetName,
     data: getWorkflowSidebarData(state)
   };
 }
 
-function openWorkflowRow(rowNum) {
+function openWorkflowRow(rowNum, sheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (!sh) throw new Error("Chưa có sheet " + WORKFLOW_CONFIG.SHEET_CONG_VIEC + ".");
+  sheetName = cleanCellText_(sheetName || "");
+  const sh = sheetName ? ss.getSheetByName(sheetName) : ss.getActiveSheet();
+  if (!sh || laSheetLoaiTru_(sh.getName())) throw new Error("Không tìm thấy sheet hồ sơ cần mở.");
   const row = Math.max(2, Number(rowNum || 2));
   ss.setActiveSheet(sh);
   sh.setActiveRange(sh.getRange(row, 1, 1, Math.max(1, sh.getLastColumn())));
-  return { ok: true, rowNum: row };
+  return { ok: true, sheetName: sh.getName(), rowNum: row };
 }
 
 function tinhTatCaSoNgayRuleChinh_(totalDays) {
@@ -1090,33 +1093,13 @@ function layMauMocCanhBao_(level) {
   return WORKFLOW_CONFIG.ALERT_COLORS[level] || WORKFLOW_CONFIG.ALERT_COLORS.RED_500;
 }
 
-function damBaoSheetCongViec_(ss) {
-  let sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (!sh) {
-    const oldSheet = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC_CU);
-    if (oldSheet) {
-      oldSheet.setName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-      sh = oldSheet;
-    } else {
-      sh = ss.insertSheet(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-    }
-  }
-  damBaoKichThuocSheet_(sh, 1, WORKFLOW_CONFIG.FIXED_HEADERS.length + 10);
-  sh.getRange(1, 1, 1, WORKFLOW_CONFIG.FIXED_HEADERS.length)
-    .setValues([WORKFLOW_CONFIG.FIXED_HEADERS])
-    .setFontWeight("bold")
-    .setBackground("#188038")
-    .setFontColor("white")
-    .setHorizontalAlignment("center");
-  for (let c = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1; c <= Math.max(sh.getLastColumn(), WORKFLOW_CONFIG.FIXED_HEADERS.length + 10); c++) {
-    const cell = sh.getRange(1, c);
-    if (!cleanCellText_(cell.getDisplayValue())) {
-      cell.setValue(WORKFLOW_CONFIG.RECORD_HEADER_PREFIX + (c - WORKFLOW_CONFIG.FIXED_HEADERS.length));
-    }
-  }
-  sh.setFrozenRows(1);
-  sh.setFrozenColumns(WORKFLOW_CONFIG.FIXED_HEADERS.length);
-  return sh;
+function anSheetWorkflowCu_(ss) {
+  WORKFLOW_CONFIG.LEGACY_WORKFLOW_SHEETS.forEach(function (name) {
+    const sh = ss.getSheetByName(name);
+    const visibleSheets = ss.getSheets().filter(function (item) { return !item.isSheetHidden(); });
+    if (!sh || sh.isSheetHidden() || visibleSheets.length <= 1) return;
+    sh.hideSheet();
+  });
 }
 
 function damBaoSheetCanhBao_(ss) {
@@ -1149,45 +1132,57 @@ function taoThongTinKhachWorkflow_(ss, state) {
     rowNum: state.rowNum || ""
   };
 
-  const sh = state.sheetName ? ss.getSheetByName(state.sheetName) : null;
-  if (sh && state.rowNum && !laSheetLoaiTru_(state.sheetName)) {
-    const colMap = timColTheoHeader_(sh);
-    const lastCol = sh.getLastColumn();
-    const row = sh.getRange(Number(state.rowNum), 1, 1, lastCol).getDisplayValues()[0];
-    if (colMap.sdt) result.sdt = cleanCellText_(row[colMap.sdt - 1]);
-    if (colMap.loaiHS) result.loaiHS = cleanCellText_(row[colMap.loaiHS - 1]);
-    if (colMap.dcDat) result.dcDat = cleanCellText_(row[colMap.dcDat - 1]);
+  let target = null;
+  try {
+    target = layWorkflowTargetTuState_(ss, state);
+  } catch (err) {
+    target = null;
+  }
+
+  if (target) {
+    const lastCol = target.sheet.getLastColumn();
+    const row = target.sheet.getRange(target.rowNum, 1, 1, lastCol).getDisplayValues()[0];
+    if (target.colMap.sdt) result.sdt = cleanCellText_(row[target.colMap.sdt - 1]);
+    if (target.colMap.loaiHS) result.loaiHS = cleanCellText_(row[target.colMap.loaiHS - 1]);
+    if (target.colMap.dcDat) result.dcDat = cleanCellText_(row[target.colMap.dcDat - 1]);
+    const totalDaysCol = timCotGoiThoiHanWorkflow_(target.sheet);
+    if (totalDaysCol) result.totalDays = chuanHoaSoNgayGoi_(row[totalDaysCol - 1] || result.totalDays);
+    result.sheetName = target.sheetName;
+    result.rowNum = target.rowNum;
   }
 
   return result;
 }
 
-function damBaoDongKhachWorkflow_(sh, customer) {
-  const lastRow = sh.getLastRow();
-  if (lastRow >= 2) {
-    const keys = sh.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
-    for (let i = 0; i < keys.length; i++) {
-      if (cleanCellText_(keys[i][0]) === customer.tenKey) return i + 2;
-    }
+function layWorkflowTargetTuState_(ss, state) {
+  state = state || {};
+  const sheetName = cleanCellText_(state.sheetName || "");
+  const rowNum = Number(state.rowNum || 0);
+  if (!sheetName || !rowNum) {
+    throw new Error("Hãy chọn đúng dòng hồ sơ trong sheet tháng trước khi hẹn việc.");
   }
-  const rowNum = Math.max(2, lastRow + 1);
-  damBaoKichThuocSheet_(sh, rowNum, WORKFLOW_CONFIG.FIXED_HEADERS.length + 10);
-  sh.getRange(rowNum, 1, 1, WORKFLOW_CONFIG.FIXED_HEADERS.length).setValues([[
-    customer.tenKey,
-    customer.ten,
-    customer.sdt,
-    customer.loaiHS,
-    customer.dcDat,
-    customer.totalDays + " ngày",
-    customer.fileName,
-    customer.sheetName,
-    customer.rowNum
-  ]]);
-  return rowNum;
+  const sh = ss.getSheetByName(sheetName);
+  if (!sh || sh.isSheetHidden() || laSheetLoaiTru_(sheetName)) {
+    throw new Error("Sheet đang chọn không phải sheet tháng có hồ sơ.");
+  }
+  if (rowNum <= CONFIG.HEADER_ROW || rowNum > Math.max(sh.getLastRow(), CONFIG.HEADER_ROW + 1)) {
+    throw new Error("Dòng hồ sơ không hợp lệ.");
+  }
+  const colMap = timColTheoHeader_(sh);
+  if (!laSheetDuLieuTraCuu_(colMap)) {
+    throw new Error("Sheet đang chọn không có cột Tên khách hàng.");
+  }
+  return {
+    sheet: sh,
+    sheetName: sheetName,
+    rowNum: rowNum,
+    colMap: colMap
+  };
 }
 
 function appendWorkflowTaskCell_(sh, rowNum, value) {
-  let col = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1;
+  const startCol = layCotBatDauTaskWorkflow_(sh);
+  let col = startCol;
   while (col <= sh.getLastColumn()) {
     if (!cleanCellText_(sh.getRange(rowNum, col).getDisplayValue())) break;
     col++;
@@ -1195,13 +1190,14 @@ function appendWorkflowTaskCell_(sh, rowNum, value) {
   if (col > sh.getLastColumn()) {
     sh.insertColumnAfter(sh.getLastColumn());
   }
-  damBaoWorkflowTaskHeader_(sh, col);
+  damBaoWorkflowTaskHeader_(sh, col, startCol);
   sh.getRange(rowNum, col).setValue(value);
   return col;
 }
 
 function danhDauTaskRuleDangMo_(sh, rowNum) {
-  const startCol = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1;
+  const startCol = timCotDauTienTaskWorkflow_(sh);
+  if (!startCol) return;
   const lastCol = sh.getLastColumn();
   if (lastCol < startCol) return;
   const range = sh.getRange(rowNum, startCol, 1, lastCol - startCol + 1);
@@ -1221,75 +1217,78 @@ function danhDauTaskRuleDangMo_(sh, rowNum) {
 }
 
 function capNhatMauVaCanhBaoWorkflow_(ss, today) {
-  const sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (!sh || sh.getLastRow() < 2) return { tasks: 0, logs: 0 };
   const logSheet = damBaoSheetCanhBao_(ss);
-  const startCol = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1;
-  const lastRow = sh.getLastRow();
-  const lastCol = sh.getLastColumn();
-  if (lastCol < startCol) return { tasks: 0, logs: 0 };
-
   let tasks = 0;
   let logs = 0;
-  const names = sh.getRange(2, 2, lastRow - 1, 1).getDisplayValues();
-  for (let r = 2; r <= lastRow; r++) {
-    const values = sh.getRange(r, startCol, 1, lastCol - startCol + 1).getDisplayValues()[0];
-    const notes = sh.getRange(r, startCol, 1, lastCol - startCol + 1).getNotes()[0];
-    const colors = [];
-    const nextNotes = [];
-    values.forEach(function (value, idx) {
-      const level = tinhMocCanhBaoTask_(value, today);
-      const parsed = parseWorkflowTaskCell_(value, today.getFullYear());
-      colors.push(layMauMocCanhBao_(level));
-      nextNotes.push(level);
-      if (parsed && !parsed.done) tasks++;
-      const prev = cleanCellText_(notes[idx] || "");
-      if (parsed && prev && prev !== level && laMocCanhBaoCanLog_(level)) {
-        ghiLogCanhBaoWorkflow_(logSheet, {
-          date: today,
-          ten: cleanCellText_(names[r - 2][0]),
-          code: parsed.code,
-          oldLevel: prev,
-          newLevel: level,
-          a1: sh.getRange(r, startCol + idx).getA1Notation(),
-          startDate: parsed.startDate,
-          endDate: parsed.endDate
-        });
-        logs++;
-      }
-    });
-    sh.getRange(r, startCol, 1, colors.length).setBackgrounds([colors]);
-    sh.getRange(r, startCol, 1, nextNotes.length).setNotes([nextNotes]);
-  }
+
+  forEachWorkflowSourceSheet_(ss, function (sh, colMap, startCol) {
+    const lastRow = sh.getLastRow();
+    const lastCol = sh.getLastColumn();
+    if (lastRow < 2 || lastCol < startCol) return;
+    const names = sh.getRange(2, colMap.ten, lastRow - 1, 1).getDisplayValues();
+    for (let r = 2; r <= lastRow; r++) {
+      const width = lastCol - startCol + 1;
+      const range = sh.getRange(r, startCol, 1, width);
+      const values = range.getDisplayValues()[0];
+      const notes = range.getNotes()[0];
+      const colors = [];
+      const nextNotes = [];
+      values.forEach(function (value, idx) {
+        const level = tinhMocCanhBaoTask_(value, today);
+        const parsed = parseWorkflowTaskCell_(value, today.getFullYear());
+        colors.push(layMauMocCanhBao_(level));
+        nextNotes.push(level);
+        if (parsed && !parsed.done) tasks++;
+        const prev = cleanCellText_(notes[idx] || "");
+        if (parsed && prev && prev !== level && laMocCanhBaoCanLog_(level)) {
+          ghiLogCanhBaoWorkflow_(logSheet, {
+            date: today,
+            sheetName: sh.getName(),
+            ten: cleanCellText_(names[r - 2][0]),
+            code: parsed.code,
+            oldLevel: prev,
+            newLevel: level,
+            a1: sh.getRange(r, startCol + idx).getA1Notation(),
+            startDate: parsed.startDate,
+            endDate: parsed.endDate
+          });
+          logs++;
+        }
+      });
+      range.setBackgrounds([colors]);
+      range.setNotes([nextNotes]);
+    }
+  });
+
   return { tasks: tasks, logs: logs };
 }
 
-function layWorkflowTheoTenKey_(ss, tenKey) {
-  const sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (!sh || sh.getLastRow() < 2) return { rowNum: 0, tasks: [] };
-  const lastRow = sh.getLastRow();
-  const keys = sh.getRange(2, 1, lastRow - 1, 1).getDisplayValues();
-  for (let i = 0; i < keys.length; i++) {
-    if (cleanCellText_(keys[i][0]) !== tenKey) continue;
-    const rowNum = i + 2;
-    const startCol = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1;
-    const lastCol = sh.getLastColumn();
-    const values = lastCol >= startCol ? sh.getRange(rowNum, startCol, 1, lastCol - startCol + 1).getDisplayValues()[0] : [];
-    const tasks = values.map(function (value, idx) {
-      const parsed = parseWorkflowTaskCell_(value, new Date().getFullYear());
-      if (!parsed) return null;
-      return {
-        text: value,
-        parsed: parsed,
-        level: tinhMocCanhBaoTask_(value, new Date()),
-        rowNum: rowNum,
-        colNum: startCol + idx,
-        a1: sh.getRange(rowNum, startCol + idx).getA1Notation()
-      };
-    }).filter(function (task) { return !!task; });
-    return { rowNum: rowNum, tasks: tasks };
+function layWorkflowTheoState_(ss, state) {
+  let target = null;
+  try {
+    target = layWorkflowTargetTuState_(ss, state || {});
+  } catch (err) {
+    return { sheetName: "", rowNum: 0, tasks: [] };
   }
-  return { rowNum: 0, tasks: [] };
+
+  const startCol = timCotDauTienTaskWorkflow_(target.sheet);
+  if (!startCol) return { sheetName: target.sheetName, rowNum: target.rowNum, tasks: [] };
+  const lastCol = target.sheet.getLastColumn();
+  const values = lastCol >= startCol ? target.sheet.getRange(target.rowNum, startCol, 1, lastCol - startCol + 1).getDisplayValues()[0] : [];
+  const tasks = values.map(function (value, idx) {
+    const parsed = parseWorkflowTaskCell_(value, new Date().getFullYear());
+    if (!parsed) return null;
+    return {
+      text: value,
+      parsed: parsed,
+      level: tinhMocCanhBaoTask_(value, new Date()),
+      sheetName: target.sheetName,
+      rowNum: target.rowNum,
+      colNum: startCol + idx,
+      a1: target.sheet.getRange(target.rowNum, startCol + idx).getA1Notation()
+    };
+  }).filter(function (task) { return !!task; });
+  return { sheetName: target.sheetName, rowNum: target.rowNum, tasks: tasks };
 }
 
 function layTongHopCanhBaoWorkflow_(ss, today) {
@@ -1308,7 +1307,7 @@ function layTongHopCanhBaoWorkflow_(ss, today) {
     const rows = logSheet.getRange(2, 1, logSheet.getLastRow() - 1, WORKFLOW_CONFIG.ALERT_HEADERS.length).getDisplayValues();
     rows.forEach(function (row) {
       const date = parseWorkflowInputDate_(row[0]);
-      const level = cleanCellText_(row[4]);
+      const level = cleanCellText_(row[5]);
       if (!date) return;
       if (toIsoDate_(date) === todayIso) {
         if (level === "ORANGE") summary.todayOrange++;
@@ -1321,31 +1320,30 @@ function layTongHopCanhBaoWorkflow_(ss, today) {
     });
   }
 
-  const sh = ss.getSheetByName(WORKFLOW_CONFIG.SHEET_CONG_VIEC);
-  if (sh && sh.getLastRow() >= 2) {
-    const startCol = WORKFLOW_CONFIG.FIXED_HEADERS.length + 1;
+  forEachWorkflowSourceSheet_(ss, function (sh, colMap, startCol) {
     const lastCol = sh.getLastColumn();
-    if (lastCol >= startCol) {
-      const names = sh.getRange(2, 2, sh.getLastRow() - 1, 1).getDisplayValues();
-      for (let r = 2; r <= sh.getLastRow(); r++) {
-        const values = sh.getRange(r, startCol, 1, lastCol - startCol + 1).getDisplayValues()[0];
-        values.forEach(function (value, idx) {
-          const parsed = parseWorkflowTaskCell_(value, today.getFullYear());
-          if (!parsed || parsed.done) return;
-          const level = tinhMocCanhBaoTask_(value, today);
-          if (level !== "ORANGE" && level.indexOf("RED") !== 0) return;
-          summary.priority.push({
-            ten: cleanCellText_(names[r - 2][0]),
-            text: value,
-            level: level,
-            rowNum: r,
-            a1: sh.getRange(r, startCol + idx).getA1Notation(),
-            overdueDays: Math.max(0, diffNgay_(parseIsoDate_(parsed.endDate), today))
-          });
+    if (lastCol < startCol || sh.getLastRow() < 2) return;
+    const names = sh.getRange(2, colMap.ten, sh.getLastRow() - 1, 1).getDisplayValues();
+    for (let r = 2; r <= sh.getLastRow(); r++) {
+      const values = sh.getRange(r, startCol, 1, lastCol - startCol + 1).getDisplayValues()[0];
+      values.forEach(function (value, idx) {
+        const parsed = parseWorkflowTaskCell_(value, today.getFullYear());
+        if (!parsed || parsed.done) return;
+        const level = tinhMocCanhBaoTask_(value, today);
+        if (level !== "ORANGE" && level.indexOf("RED") !== 0) return;
+        summary.priority.push({
+          sheetName: sh.getName(),
+          ten: cleanCellText_(names[r - 2][0]),
+          text: value,
+          level: level,
+          rowNum: r,
+          a1: sh.getRange(r, startCol + idx).getA1Notation(),
+          overdueDays: Math.max(0, diffNgay_(parseIsoDate_(parsed.endDate), today))
         });
-      }
+      });
     }
-  }
+  });
+
   summary.priority.sort(function (a, b) {
     const aRed = a.level.indexOf("RED") === 0 ? 1 : 0;
     const bRed = b.level.indexOf("RED") === 0 ? 1 : 0;
@@ -1356,11 +1354,25 @@ function layTongHopCanhBaoWorkflow_(ss, today) {
   return summary;
 }
 
+function forEachWorkflowSourceSheet_(ss, callback) {
+  ss.getSheets().forEach(function (sh) {
+    const sheetName = sh.getName();
+    if (laSheetLoaiTru_(sheetName) || sh.isSheetHidden()) return;
+    if (sh.getLastRow() <= CONFIG.HEADER_ROW || sh.getLastColumn() === 0) return;
+    const colMap = timColTheoHeader_(sh);
+    if (!laSheetDuLieuTraCuu_(colMap)) return;
+    const startCol = timCotDauTienTaskWorkflow_(sh);
+    if (!startCol) return;
+    callback(sh, colMap, startCol);
+  });
+}
+
 function ghiLogCanhBaoWorkflow_(sh, item) {
   const row = sh.getLastRow() + 1;
   damBaoKichThuocSheet_(sh, row, WORKFLOW_CONFIG.ALERT_HEADERS.length);
   sh.getRange(row, 1, 1, WORKFLOW_CONFIG.ALERT_HEADERS.length).setValues([[
     formatWorkflowFullDate_(item.date),
+    item.sheetName,
     item.ten,
     item.code,
     item.oldLevel,
@@ -1375,11 +1387,48 @@ function laMocCanhBaoCanLog_(level) {
   return level === "ORANGE" || level.indexOf("RED") === 0;
 }
 
-function damBaoWorkflowTaskHeader_(sh, col) {
+function damBaoWorkflowTaskHeader_(sh, col, startCol) {
   const header = cleanCellText_(sh.getRange(1, col).getDisplayValue());
   if (!header) {
-    sh.getRange(1, col).setValue(WORKFLOW_CONFIG.RECORD_HEADER_PREFIX + (col - WORKFLOW_CONFIG.FIXED_HEADERS.length));
+    sh.getRange(1, col).setValue(WORKFLOW_CONFIG.TASK_HEADER_PREFIX + (col - startCol + 1));
   }
+}
+
+function timCotDauTienTaskWorkflow_(sh) {
+  const lastCol = sh.getLastColumn();
+  if (!lastCol) return 0;
+  const headers = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
+  for (let i = 0; i < headers.length; i++) {
+    if (laHeaderTaskWorkflow_(headers[i])) return i + 1;
+  }
+  return 0;
+}
+
+function layCotBatDauTaskWorkflow_(sh) {
+  const existing = timCotDauTienTaskWorkflow_(sh);
+  if (existing) return existing;
+  const col = Math.max(1, sh.getLastColumn() + 1);
+  damBaoKichThuocSheet_(sh, CONFIG.HEADER_ROW, col);
+  sh.getRange(CONFIG.HEADER_ROW, col).setValue(WORKFLOW_CONFIG.TASK_HEADER_PREFIX + "1");
+  return col;
+}
+
+function laHeaderTaskWorkflow_(value) {
+  const key = chuanHoaHeaderKey_(value);
+  return key.indexOf("ban_ghi") === 0;
+}
+
+function timCotGoiThoiHanWorkflow_(sh) {
+  const lastCol = sh.getLastColumn();
+  if (!lastCol) return 0;
+  const headers = sh.getRange(CONFIG.HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
+  for (let i = 0; i < headers.length; i++) {
+    const key = chuanHoaHeaderKey_(headers[i]);
+    if (key === "goi_thoi_han" || key === "yeu_cau" || key === "thoi_han") {
+      return i + 1;
+    }
+  }
+  return 0;
 }
 
 function chuanHoaSoNgayGoi_(value) {

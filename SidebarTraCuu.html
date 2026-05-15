@@ -756,7 +756,7 @@
           <div class="spinner"></div>
           <div>
             <div class="name">Đang nạp ${activeTab === "alerts" ? "cảnh báo" : "hẹn việc"}</div>
-            <div class="muted">Đọc QLKH và cập nhật màu task.</div>
+            <div class="muted">Đọc task trên sheet tháng và cập nhật màu.</div>
           </div>
         </div>
       `);
@@ -791,8 +791,8 @@
       const history = renderWorkflowTimeline(workflow.tasks || []);
       setHtml(`
         <div class="name">${esc(currentName || "Chưa chọn khách")}</div>
-        <div class="meta">${workflow.rowNum ? "QLKH · dòng " + esc(workflow.rowNum) : "Chưa có dòng trong QLKH"}</div>
-        ${workflow.rowNum ? `<button class="secondary-btn" type="button" data-open-row="${esc(workflow.rowNum)}">Mở dòng</button>` : ""}
+        <div class="meta">${workflow.rowNum ? esc(workflow.sheetName || latestState.sheetName || "") + " · dòng " + esc(workflow.rowNum) : "Chưa chọn dòng hồ sơ trong sheet tháng"}</div>
+        ${workflow.rowNum ? `<button class="secondary-btn" type="button" data-open-row="${esc(workflow.rowNum)}" data-open-sheet="${esc(workflow.sheetName || latestState.sheetName || "")}">Mở dòng</button>` : ""}
         <div class="panel">
           <div class="name">Chuyển bước</div>
           <div class="form-row">
@@ -835,8 +835,8 @@
         return `
           <div class="task-line">
             <div><span class="level-${esc(item.level)}">${esc(item.level)}</span> ${esc(item.ten || "")}</div>
-            <div class="meta">${esc(item.text || "")}${item.overdueDays ? " · quá " + esc(item.overdueDays) + " ngày" : ""}</div>
-            <button class="secondary-btn" type="button" data-open-row="${esc(item.rowNum)}">Mở dòng</button>
+            <div class="meta">${esc(item.sheetName || "")} · ${esc(item.text || "")}${item.overdueDays ? " · quá " + esc(item.overdueDays) + " ngày" : ""}</div>
+            <button class="secondary-btn" type="button" data-open-row="${esc(item.rowNum)}" data-open-sheet="${esc(item.sheetName || "")}">Mở dòng</button>
           </div>
         `;
       }).join("") : `<div class="empty">Chưa có task cam/đỏ cần ưu tiên.</div>`;
@@ -910,12 +910,12 @@
         });
     }
 
-    function openWorkflowRowClient(rowNum) {
+    function openWorkflowRowClient(rowNum, sheetName) {
       google.script.run
         .withFailureHandler(function (err) {
           setHtml(`<div class="error"><strong>Lỗi mở dòng</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
         })
-        .openWorkflowRow(rowNum);
+        .openWorkflowRow(rowNum, sheetName);
     }
 
     function visibleColumns(headers, rows) {
@@ -988,7 +988,7 @@
       if (target.id === "saveStepBtn") saveStepTask();
       if (target.id === "saveFlexBtn") saveFlexTask();
       if (target.getAttribute && target.getAttribute("data-open-row")) {
-        openWorkflowRowClient(target.getAttribute("data-open-row"));
+        openWorkflowRowClient(target.getAttribute("data-open-row"), target.getAttribute("data-open-sheet"));
       }
     });
     window.addEventListener("beforeunload", function () {

@@ -13,6 +13,7 @@ Du an la Google Apps Script cho Google Sheet quan ly khach hang va tra cuu lich 
 
 - Không tóm tắt/gộp mất dữ liệu.
 - `DANH_SACH_KHACH` la raw index dong goc: moi dong trong sheet nguon hop le duoc ghi thanh mot dong index rieng.
+- Task/hen viec duoc luu ngay tren dong ho so cua sheet thang, trong cac cot `Ban ghi ...`; khong luu vao `DANH_SACH_CHUNG`/`QLKH`.
 - Du lieu nguon ngoai duoc cau hinh qua `NGUON_DU_LIEU`.
 - Sheet log/do toc do chi phuc vu chan doan, khong duoc xem la nguon du lieu khach hang.
 

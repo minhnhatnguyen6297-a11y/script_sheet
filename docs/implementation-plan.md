@@ -3,7 +3,9 @@
 ## Muc tieu
 
 - Sidebar la noi thao tac chinh: tra cuu, hen viec, chuyen buoc, xem canh bao.
-- Sheet `QLKH` la noi luu lich su va task theo tung khach: 1 khach = 1 dong, moi task/lich su = 1 o ngang.
+- Sheet thang la noi luu task chinh: task nam ngay tren dong ho so, sau cac cot nghiep vu dang co.
+- `DANH_SACH_KHACH` chi la index tra cuu rebuild duoc, khong phai noi user sua task.
+- Khong dung `DANH_SACH_CHUNG`/`QLKH` lam sheet task user phai nhin; neu con sheet cu thi script bo qua va an khi dung workflow.
 - Moi task dang theo doi co mau rieng theo tien do. Task da xong/chuyen buoc co dau `✓` va nen trang.
 - Co tab canh bao de biet hom nay/tuan nay co bao nhieu task moi chuyen cam/do va danh sach can xu ly truoc.
 
@@ -25,10 +27,10 @@ Bo buoc `Trả hồ sơ cho khách` sau khi `Có sổ`.
 
 ## Cau truc sheet
 
-`QLKH` co cac cot dau co dinh:
+Sheet thang giu cac cot nghiep vu hien co, vi du:
 
 ```text
-Tên tra cứu | Tên khách hàng | SĐT | Loại hồ sơ | Địa chỉ đất | Gói thời hạn | File nguồn | Sheet nguồn | Dòng nguồn
+Ngày nhận hồ sơ | Tên khách hàng | Địa chỉ | SĐT | Loại hồ sơ | Yêu Cầu | Trạng thái | Thù Lao | Người làm hồ sơ | Người nhận uỷ quyền | Ngày nộp HS | Mã HS | Ghi chú
 ```
 
 Tu cot tiep theo tro di la lich su/task ngang:
@@ -50,7 +52,7 @@ Quy uoc:
 
 - Khong co `✓`: task dang theo doi, co mau.
 - Co `✓`: task da xong/chuyen buoc, nen trang.
-- User co the sua/xoa truc tiep tung o task neu nhap nham.
+- User co the sua/xoa truc tiep tung o task ngay tren sheet thang neu nhap nham.
 
 ## Rule thoi han
 
@@ -103,8 +105,8 @@ Them tab vao sidebar hien co:
 ### Tra cuu
 
 - Giu bang tra cuu hien tai tu `DANH_SACH_KHACH`.
-- Hien timeline lich su/task doc tu `QLKH`.
-- Co nut `Mở dòng` de nhay toi dong khach trong `QLKH`.
+- Hien timeline lich su/task doc tu dong ho so trong sheet thang dang chon.
+- Co nut `Mở dòng` de nhay toi dong ho so trong sheet thang.
 
 ### Hen viec
 
@@ -129,7 +131,7 @@ Them tab vao sidebar hien co:
 Tao sheet ky thuat `CANH_BAO_HAN` voi cac cot:
 
 ```text
-Ngày ghi nhận | Tên khách | Bước | Mốc cũ | Mốc mới | Ô task | Ngày bắt đầu | Ngày kết thúc
+Ngày ghi nhận | Sheet nguồn | Tên khách | Bước | Mốc cũ | Mốc mới | Ô task | Ngày bắt đầu | Ngày kết thúc
 ```
 
 Moi lan task doi moc canh bao thi ghi log de tinh hom nay/tuan nay moi chuyen cam/do.
@@ -137,10 +139,9 @@ Moi lan task doi moc canh bao thi ghi log de tinh hom nay/tuan nay moi chuyen ca
 ## Cap nhat va pham vi
 
 - Khi mo sidebar: cap nhat mau va canh bao.
-- Khi bam `Lưu` hen viec/chuyen buoc: cap nhat ngay dong do.
+- Khi bam `Lưu` hen viec/chuyen buoc: ghi task vao dong ho so cua sheet thang va cap nhat mau ngay dong do.
 - Them menu `Cập nhật cảnh báo` de chay thu cong.
 - Khi dong bo `DANH_SACH_KHACH`, chi giu cac cot nghiep vu can tra cuu. Bo qua cot rong, cot sinh tu dong dang `Column ...`/`Cot ...`, cot ke toan `Ngày`/`Thu`/`Chi`, cot phu nhu `ngày dự kiến sang thuế`, va duplicate nhu `Ghi chú (2)`.
 - V1 khong gui email/popup nhac viec.
 - V1 khong tao dashboard phuc tap.
-- V1 khong ep user nhap hen viec truc tiep trong sheet nguon.
-- V1 khong sua sheet nguon ngoai `NGUON_DU_LIEU`.
+- V1 khong ep user nhap hen viec truc tiep trong o sheet; thao tac tao task nam trong sidebar, con viec sua/xoa task nhap nham co the lam truc tiep tren o task cua sheet thang.

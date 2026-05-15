@@ -94,17 +94,23 @@ test("Apps Script and sidebar JavaScript still parse locally", () => {
   new Function(match[1]);
 });
 
-test("workflow config uses approved step names and keeps workflow sheets out of raw index", () => {
+test("workflow config uses approved step names and stores tasks on source month sheets", () => {
   const source = read(gsPath);
-  assert.match(source, /SHEET_CONG_VIEC:\s*"QLKH"/);
-  assert.match(source, /SHEET_CONG_VIEC_CU:\s*"DANH_SACH_CHUNG"/);
+  assert.doesNotMatch(source, /SHEET_CONG_VIEC/);
+  assert.doesNotMatch(source, /damBaoSheetCongViec_/);
+  assert.match(source, /TASK_HEADER_PREFIX:\s*"[^"]*ghi "/);
+  assert.match(source, /LEGACY_WORKFLOW_SHEETS:\s*\["QLKH",\s*"DANH_SACH_CHUNG"\]/);
   assert.match(source, /SHEET_CANH_BAO:\s*"CANH_BAO_HAN"/);
-  assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CONG_VIEC/);
-  assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CONG_VIEC_CU/);
+  assert.match(source, /function layWorkflowTargetTuState_/);
+  assert.match(source, /appendWorkflowTaskCell_\(target\.sheet,\s*target\.rowNum/);
+  assert.match(source, /function forEachWorkflowSourceSheet_/);
   assert.match(source, /sheetName === WORKFLOW_CONFIG\.SHEET_CANH_BAO/);
 
   const { WORKFLOW_CONFIG } = loadServerExports(["WORKFLOW_CONFIG"]);
   assert.ok(WORKFLOW_CONFIG);
+  assert.strictEqual(WORKFLOW_CONFIG.SHEET_CONG_VIEC, undefined);
+  assert.deepStrictEqual(WORKFLOW_CONFIG.LEGACY_WORKFLOW_SHEETS, ["QLKH", "DANH_SACH_CHUNG"]);
+  assert.match(WORKFLOW_CONFIG.TASK_HEADER_PREFIX, /ghi $/);
   assert.deepStrictEqual(
     WORKFLOW_CONFIG.STEPS.map((step) => [step.code, step.label]),
     [
@@ -285,6 +291,7 @@ test("sidebar exposes lookup, task scheduling, and alert tabs backed by server c
   assert.match(html, /data-tab="alerts"/);
   assert.match(html, /Hẹn việc/);
   assert.match(html, /Cảnh báo/);
+  assert.doesNotMatch(html, /QLKH|DANH_SACH_CHUNG/);
   assert.match(html, /\.saveWorkflowTask\(/);
   assert.match(html, /\.getWorkflowSidebarData\(/);
   assert.match(html, /\.openWorkflowRow\(/);
