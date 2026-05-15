@@ -9,6 +9,16 @@
 - Moi task dang theo doi co mau rieng theo tien do. Task da xong/chuyen buoc co dau `✓` va nen trang.
 - Co tab canh bao de biet hom nay/tuan nay co bao nhieu task moi chuyen cam/do va danh sach can xu ly truoc.
 
+## Nguyen tac du lieu
+
+- Du lieu goc chi co mot noi: sheet thang.
+- Sheet tong hop/index phai rebuild duoc bat cu luc nao.
+- Sidebar khong tu y luu task vao nhieu sheet.
+- Moi thao tac ghi task di qua `saveWorkflowTask`.
+- `getWorkflowSidebarData` chi doc dong dang chon; khong quet/cap nhat mau toan bo nam khi mo sidebar/tab hen viec.
+- Quet danh sach lon phai doc/ghi theo block bang `getValues`/`getDisplayValues`/`setValues`, khong doc tung o trong vong lap.
+- Du lieu sidebar can tim kiem thi nap mot lan vao browser; du lieu task can chinh xac thi doc lai tu dong goc tren sheet thang.
+
 ## Ten buoc chuan
 
 | Ma | Ten hien thi |
@@ -139,8 +149,9 @@ Moi lan task doi moc canh bao thi ghi log de tinh hom nay/tuan nay moi chuyen ca
 ## Cap nhat va pham vi
 
 - Khi mo sidebar: cap nhat mau va canh bao.
+- Khi mo tab hen viec: chi doc dong ho so dang chon.
 - Khi bam `Lưu` hen viec/chuyen buoc: ghi task vao dong ho so cua sheet thang va cap nhat mau ngay dong do.
-- Them menu `Cập nhật cảnh báo` de chay thu cong.
+- Them menu `Cập nhật cảnh báo` de cap nhat mau/log canh bao toan bo file khi can.
 - Khi dong bo `DANH_SACH_KHACH`, chi giu cac cot nghiep vu can tra cuu. Bo qua cot rong, cot sinh tu dong dang `Column ...`/`Cot ...`, cot ke toan `Ngày`/`Thu`/`Chi`, cot phu nhu `ngày dự kiến sang thuế`, va duplicate nhu `Ghi chú (2)`.
 - V1 khong gui email/popup nhac viec.
 - V1 khong tao dashboard phuc tap.

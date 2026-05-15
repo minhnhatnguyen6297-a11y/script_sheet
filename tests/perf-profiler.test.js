@@ -20,6 +20,23 @@ function loadServerExports(exportNames) {
   return new Function(`${source}\nreturn {${exportBody}};`)();
 }
 
+function extractFunctionBody(source, name) {
+  const marker = `function ${name}(`;
+  const start = source.indexOf(marker);
+  assert.notStrictEqual(start, -1, `${name} exists`);
+  const braceStart = source.indexOf("{", start);
+  assert.notStrictEqual(braceStart, -1, `${name} has a body`);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i++) {
+    if (source[i] === "{") depth++;
+    if (source[i] === "}") {
+      depth--;
+      if (depth === 0) return source.slice(braceStart + 1, i);
+    }
+  }
+  throw new Error(`Could not parse body for ${name}`);
+}
+
 test("project guidance records the customer lookup constraints", () => {
   const text = read(agentPath);
   assert.match(text, /DANH_SACH_KHACH.*raw index/i);
@@ -125,6 +142,37 @@ test("workflow config uses approved step names and stores tasks on source month 
       ["PHAT_SINH", "Phát sinh"]
     ]
   );
+});
+
+test("workflow sidebar reads stay row scoped and do not update all monthly sheets", () => {
+  const source = read(gsPath);
+  const sidebarBody = extractFunctionBody(source, "getWorkflowSidebarData");
+  assert.doesNotMatch(sidebarBody, /capNhatMauVaCanhBaoWorkflow_|setValue|setValues|setBackgrounds|setNotes|appendWorkflowTaskCell_|ghiLogCanhBaoWorkflow_/);
+  assert.match(sidebarBody, /layWorkflowSidebarDataTuState_\(ss,\s*state \|\| getActiveCellLookupState\(\)\)/);
+
+  const saveBody = extractFunctionBody(source, "saveWorkflowTask");
+  assert.doesNotMatch(saveBody, /capNhatMauVaCanhBaoWorkflow_|getWorkflowSidebarData\(/);
+  assert.match(saveBody, /capNhatMauTaskDongWorkflow_\(target\.sheet,\s*target\.rowNum,\s*now\)/);
+  assert.match(saveBody, /layWorkflowSidebarDataTuState_\(ss,\s*state\)/);
+
+  const alertsBody = extractFunctionBody(source, "getWorkflowAlertsData");
+  assert.match(alertsBody, /layTongHopCanhBaoWorkflow_\(ss,\s*new Date\(\)\)/);
+  assert.doesNotMatch(alertsBody, /capNhatMauVaCanhBaoWorkflow_|setBackgrounds|setNotes|setValues/);
+});
+
+test("workflow full-scan warning updates batch read and write task blocks by sheet", () => {
+  const source = read(gsPath);
+  const fullScanBody = extractFunctionBody(source, "capNhatMauVaCanhBaoWorkflow_");
+  assert.match(fullScanBody, /capNhatMauVaCanhBaoSheet_\(sh,\s*colMap,\s*startCol,\s*today,\s*logRows\)/);
+  assert.match(fullScanBody, /ghiLogCanhBaoRows_\(logSheet,\s*logRows\)/);
+  assert.doesNotMatch(fullScanBody, /getDisplayValues|getNotes|setBackgrounds|setNotes/);
+
+  const sheetBatchBody = extractFunctionBody(source, "capNhatMauVaCanhBaoSheet_");
+  assert.match(sheetBatchBody, /const taskRange = sh\.getRange\(2,\s*startCol,\s*numRows,\s*width\)/);
+  assert.match(sheetBatchBody, /const valueMatrix = taskRange\.getDisplayValues\(\)/);
+  assert.match(sheetBatchBody, /const noteMatrix = taskRange\.getNotes\(\)/);
+  assert.match(sheetBatchBody, /taskRange\.setBackgrounds\(colorMatrix\)/);
+  assert.match(sheetBatchBody, /taskRange\.setNotes\(nextNoteMatrix\)/);
 });
 
 test("sync output filters junk, duplicate, and accounting-only source headers", () => {
@@ -294,5 +342,6 @@ test("sidebar exposes lookup, task scheduling, and alert tabs backed by server c
   assert.doesNotMatch(html, /QLKH|DANH_SACH_CHUNG/);
   assert.match(html, /\.saveWorkflowTask\(/);
   assert.match(html, /\.getWorkflowSidebarData\(/);
+  assert.match(html, /\.getWorkflowAlertsData\(/);
   assert.match(html, /\.openWorkflowRow\(/);
 });

@@ -751,20 +751,21 @@
     function loadWorkflowData(tabAfterLoad) {
       if (workflowLoading) return;
       workflowLoading = true;
+      const targetTab = tabAfterLoad || activeTab;
       setHtml(`
         <div class="loading-row">
           <div class="spinner"></div>
           <div>
-            <div class="name">Đang nạp ${activeTab === "alerts" ? "cảnh báo" : "hẹn việc"}</div>
-            <div class="muted">Đọc task trên sheet tháng và cập nhật màu.</div>
+            <div class="name">Đang nạp ${targetTab === "alerts" ? "cảnh báo" : "hẹn việc"}</div>
+            <div class="muted">Đọc task trên sheet tháng.</div>
           </div>
         </div>
       `);
-      google.script.run
+      const runner = google.script.run
         .withSuccessHandler(function (data) {
           workflowLoading = false;
           workflowData = data || {};
-          if (tabAfterLoad === "alerts" || activeTab === "alerts") {
+          if (targetTab === "alerts") {
             renderAlertsTab();
           } else {
             renderTaskTab();
@@ -773,8 +774,12 @@
         .withFailureHandler(function (err) {
           workflowLoading = false;
           setHtml(`<div class="error"><strong>Lỗi nạp hẹn việc</strong><br>${esc(err && err.message ? err.message : err)}</div>`);
-        })
-        .getWorkflowSidebarData(latestState || {});
+        });
+      if (targetTab === "alerts") {
+        runner.getWorkflowAlertsData();
+      } else {
+        runner.getWorkflowSidebarData(latestState || {});
+      }
     }
 
     function renderTaskTab() {

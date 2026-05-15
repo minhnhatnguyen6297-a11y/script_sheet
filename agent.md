@@ -14,6 +14,11 @@ Du an la Google Apps Script cho Google Sheet quan ly khach hang va tra cuu lich 
 - Không tóm tắt/gộp mất dữ liệu.
 - `DANH_SACH_KHACH` la raw index dong goc: moi dong trong sheet nguon hop le duoc ghi thanh mot dong index rieng.
 - Task/hen viec duoc luu ngay tren dong ho so cua sheet thang, trong cac cot `Ban ghi ...`; khong luu vao `DANH_SACH_CHUNG`/`QLKH`.
+- Du lieu goc chi co mot noi: sheet thang. Moi sheet tong hop/index phai rebuild duoc bat cu luc nao.
+- Sidebar khong tu y ghi du lieu vao nhieu sheet. Moi thao tac ghi task di qua `saveWorkflowTask`.
+- `getWorkflowSidebarData` chi doc du lieu dong dang chon, khong quet/cap nhat mau toan bo cac sheet thang.
+- Doc danh sach lon phai dung batch `getValues`/`getDisplayValues`; khong doc tung o trong vong lap.
+- Du lieu can tim kiem trong sidebar thi nap mot lan vao browser; du lieu can chinh xac tuyet doi thi doc lai tu dong goc.
 - Du lieu nguon ngoai duoc cau hinh qua `NGUON_DU_LIEU`.
 - Sheet log/do toc do chi phuc vu chan doan, khong duoc xem la nguon du lieu khach hang.
 
